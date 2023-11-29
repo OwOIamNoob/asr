@@ -56,9 +56,11 @@ class MNISTDataModule(LightningDataModule):
         self,
         data_dir: str = "data/",
         train_val_test_split: Tuple[int, int, int] = (55_000, 5_000, 10_000),
+        transform: transforms.Compose([transforms.ToTensor()]),
         batch_size: int = 64,
         num_workers: int = 0,
         pin_memory: bool = False,
+        ddim: None
     ) -> None:
         """Initialize a `MNISTDataModule`.
 
@@ -75,9 +77,12 @@ class MNISTDataModule(LightningDataModule):
         self.save_hyperparameters(logger=False)
 
         # data transformations
-        self.transforms = transforms.Compose(
-            [transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]
-        )
+        if transform is None:
+            self.transforms = transforms.Compose(
+                [transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]
+            )
+        else:
+            self.transforms = transform
 
         self.data_train: Optional[Dataset] = None
         self.data_val: Optional[Dataset] = None
