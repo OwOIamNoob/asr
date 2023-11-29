@@ -112,4 +112,29 @@ class DDIMScheduler:
         rqa = match_shape(self.alphas_cumprod[timesteps] ** 0.5, original_samples)
         rba = match_shape((1 - self.alphas_cumprod[timesteps]) ** 0.5, original_samples)
         return rpa * original_samples + rba * noise
+    
+    @torch.no_grad()
+    def generate(self,
+                 model, 
+                 batch_size=1,
+                 generator=None,
+                 eta=1.,
+                 use_clipped_model_output=True,
+                 num_inference_steps=50,
+                 output_type="pil",
+                 device=None):
         
+        device = "cpu" if device is None else device
+        img = torch.randn((batch_size, 
+                             model.in_channels, 
+                             model.sample_size,
+                             model.sample_size), generator=generator)
+        img = img.to(device)
+        
+        self.set_timesteps(num_inference_steps)
+        
+        for t in tqdm(self.timesteps):
+            # compute noise parallely
+            model_output = model(img, t)["sample"]
+            # predict previous mean + eta V
+            
