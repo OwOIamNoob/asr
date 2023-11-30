@@ -1,0 +1,28 @@
+Traceback (most recent call last):
+  File "/work/hpc/potato/laos_vi/src/models/components/unet.py", line 242, in <module>
+    pred = model(x, 0).to("cpu").to_numpy()
+  File "/work/hpc/.conda/diff/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1518, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/work/hpc/.conda/diff/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1527, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/work/hpc/potato/laos_vi/src/models/components/unet.py", line 206, in forward
+    x = attn(x)
+  File "/work/hpc/.conda/diff/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1518, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/work/hpc/.conda/diff/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1527, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/work/hpc/potato/laos_vi/src/models/components/unet.py", line 60, in forward
+    return self.fn(x, *args, **kwargs) + x
+  File "/work/hpc/.conda/diff/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1518, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/work/hpc/.conda/diff/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1527, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/work/hpc/potato/laos_vi/src/models/components/unet.py", line 52, in forward
+    return self.fn(x)
+  File "/work/hpc/.conda/diff/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1518, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/work/hpc/.conda/diff/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1527, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/work/hpc/potato/laos_vi/src/models/components/diff_module.py", line 84, in forward
+    q, k, v = map(lambda t: rearrange(t, 'b (h c) x y -> b h c (x y)', 
+TypeError: map() must have at least two arguments.

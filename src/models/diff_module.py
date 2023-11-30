@@ -4,9 +4,10 @@ import torch
 from lightning import LightningModule
 from torchmetrics import MaxMetric, MeanMetric
 from torchmetrics.classification.accuracy import Accuracy
+from models.components import Unet
+from pipeline.ddim import DDIMScheduler
 
-
-class MNISTLitModule(LightningModule):
+class DiffusionLitModule(LightningModule):
     """Example of a `LightningModule` for MNIST classification.
 
     A `LightningModule` implements 8 key methods:
@@ -45,6 +46,8 @@ class MNISTLitModule(LightningModule):
         optimizer: torch.optim.Optimizer,
         scheduler: torch.optim.lr_scheduler,
         compile: bool,
+        df_scheduler: DDIMScheduler,
+        num_steps: int
     ) -> None:
         """Initialize a `MNISTLitModule`.
 
@@ -59,14 +62,15 @@ class MNISTLitModule(LightningModule):
         self.save_hyperparameters(logger=False)
 
         self.net = net
-
+        self.df_scheduler = df_scheduler
+        self.df_scheduler.set_timesteps(num_steps)
         # loss function
-        self.criterion = torch.nn.CrossEntropyLoss()
+        self.criterion = torch.nn.MSELoss()
 
         # metric objects for calculating and averaging accuracy across batches
-        self.train_acc = Accuracy(task="multiclass", num_classes=10)
-        self.val_acc = Accuracy(task="multiclass", num_classes=10)
-        self.test_acc = Accuracy(task="multiclass", num_classes=10)
+        # self.train_acc = Accuracy(task="multiclass", num_classes=10)
+        # self.val_acc = Accuracy(task="multiclass", num_classes=10)
+        # self.test_acc = Accuracy(task="multiclass", num_classes=10)
 
         # for averaging loss across batches
         self.train_loss = MeanMetric()
@@ -76,20 +80,34 @@ class MNISTLitModule(LightningModule):
         # for tracking best so far validation accuracy
         self.val_acc_best = MaxMetric()
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, time) -> torch.Tensor:
         """Perform a forward pass through the model `self.net`.
 
         :param x: A tensor of images.
         :return: A tensor of logits.
         """
-        return self.net(x)
+        return self.net(x, time)
+    
+    def denoise(self, sample: torch.Tensor, t, recursive=False, progress=None):
+        if t <= 1:
+            return sample
+        
+        pred_noise, prev_timestep = self(sample, t, prev_time=True)
+        sample_prev = self.df_scheduler.step(pred_noise,
+                                             t,
+                                             sample)
+        if progress is not None:
+            progress.append(sample_prev.copy())
+        
+        if recursive is True:
+            return denoise(self, sample_prev, prev_timestep, progress)
 
     def on_train_start(self) -> None:
         """Lightning hook that is called when training begins."""
         # by default lightning executes validation step sanity checks before training starts,
         # so it's worth to make sure validation metrics don't store results from these checks
         self.val_loss.reset()
-        self.val_acc.reset()
+        # self.val_acc.reset()
         self.val_acc_best.reset()
 
     def model_step(
@@ -104,11 +122,17 @@ class MNISTLitModule(LightningModule):
             - A tensor of predictions.
             - A tensor of target labels.
         """
+        # for MNIST only
         x, y = batch
-        logits = self.forward(x)
-        loss = self.criterion(logits, y)
-        preds = torch.argmax(logits, dim=1)
-        return loss, preds, y
+        # create timestamps
+        timestamps = torch.randint(0, self.df_scheduler.num_inference_step, y.size()).flatten()
+        # add noise
+        noise = torch.randn(x.size())
+        noisy_imgs = self.df_scheduler.add_noise(x, torch.randn(), timesteps)
+        pred_noise = self.forward(noisy_imgs, self.df_scheduler.timesteps[timestamps])
+        
+        loss = self.criterion(pred_noise, noise)
+        return loss, pred_noise, noise, timesteps, timesteps
 
     def training_step(
         self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int
@@ -126,7 +150,7 @@ class MNISTLitModule(LightningModule):
         self.train_loss(loss)
         self.train_acc(preds, targets)
         self.log("train/loss", self.train_loss, on_step=False, on_epoch=True, prog_bar=True)
-        self.log("train/acc", self.train_acc, on_step=False, on_epoch=True, prog_bar=True)
+        # self.log("train/acc", self.train_acc, on_step=False, on_epoch=True, prog_bar=True)
 
         # return loss or backpropagation will fail
         return loss
@@ -142,17 +166,17 @@ class MNISTLitModule(LightningModule):
             labels.
         :param batch_idx: The index of the current batch.
         """
-        loss, preds, targets = self.model_step(batch)
+        loss, preds, targets, _ = self.model_step(batch)
 
         # update and log metrics
         self.val_loss(loss)
-        self.val_acc(preds, targets)
+        # self.val_acc(preds, targets)
         self.log("val/loss", self.val_loss, on_step=False, on_epoch=True, prog_bar=True)
-        self.log("val/acc", self.val_acc, on_step=False, on_epoch=True, prog_bar=True)
+        # self.log("val/acc", self.val_acc, on_step=False, on_epoch=True, prog_bar=True)
 
     def on_validation_epoch_end(self) -> None:
         "Lightning hook that is called when a validation epoch ends."
-        acc = self.val_acc.compute()  # get current val acc
+        acc = self.val_loss.compute()  # get current val acc
         self.val_acc_best(acc)  # update best so far val acc
         # log `val_acc_best` as a value through `.compute()` method, instead of as a metric object
         # otherwise metric would be reset by lightning after each epoch
@@ -166,12 +190,12 @@ class MNISTLitModule(LightningModule):
         :param batch_idx: The index of the current batch.
         """
         loss, preds, targets = self.model_step(batch)
-
+        generated 
         # update and log metrics
         self.test_loss(loss)
-        self.test_acc(preds, targets)
+        # self.test_acc(preds, targets)
         self.log("test/loss", self.test_loss, on_step=False, on_epoch=True, prog_bar=True)
-        self.log("test/acc", self.test_acc, on_step=False, on_epoch=True, prog_bar=True)
+        # self.log("test/acc", self.test_acc, on_step=False, on_epoch=True, prog_bar=True)
 
     def on_test_epoch_end(self) -> None:
         """Lightning hook that is called when a test epoch ends."""

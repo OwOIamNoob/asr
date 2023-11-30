@@ -79,7 +79,7 @@ class MNISTDataModule(LightningDataModule):
         # data transformations
         if transform is None:
             self.transforms = transforms.Compose(
-                [transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]
+                [transforms.ToTensor(), transforms.Normalize((0,), (1,))]
             )
         else:
             self.transforms = transform
@@ -106,8 +106,8 @@ class MNISTDataModule(LightningDataModule):
 
         Do not use it to assign state (self.x = y).
         """
-        MNIST(self.hparams.data_dir, train=True, download=True)
-        MNIST(self.hparams.data_dir, train=False, download=True)
+        MNIST(self.hparams.data_dir, train=True, transform=self.transform, download=True)
+        MNIST(self.hparams.data_dir, train=False, transform=self.transform, download=True)
 
     def setup(self, stage: Optional[str] = None) -> None:
         """Load data. Set variables: `self.data_train`, `self.data_val`, `self.data_test`.

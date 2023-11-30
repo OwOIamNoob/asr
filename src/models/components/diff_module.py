@@ -24,7 +24,7 @@ class LayerNorm(nn.Module):
         return (x - E) * (V + eps).rsqrt() * self.g
 
 
-class LinearAttention(nn.Module):
+class CustomLinearAttention(nn.Module):
     def __init__(self, dim, heads=4, dim_head=32):
         super().__init__()
         self.scale = dim_head ** -0.5
@@ -64,12 +64,12 @@ class LinearAttention(nn.Module):
         
         return self.to_out(out)
     
-    class Attention(nn.Module):
+class CustomAttention(nn.Module):
         def __init__(self, dim, heads=4, dim_head=32):
             super().__init__()
             self.scale = dim_head ** -0.5
             self.heads = heads 
-            hidden_dim = dim_hdea * heads
+            hidden_dim = dim_head * heads
             
             self.to_qkv = nn.Conv2d(dim, hidden_dim * 3, 1, bias=False)
             self.to_out = nn.Conv2d(hidden_dim, dim, 1)
@@ -81,8 +81,8 @@ class LinearAttention(nn.Module):
             qkv = self.to_qkv(x).chunk(3, dim=1)
             
             # 3, d, dh / head, w * dim_head
-            q, k, v = map(lambda t: rearrange(t, 'b (h c) x y -> b h c (x y)', 
-                                            h = self.heads))
+            # print(qkv[0].size())
+            q, k, v = map(lambda t: rearrange(t, 'b (h c) x y -> b h c (x y)', h = self.heads), qkv)
             
             q = q * self.scale 
             
