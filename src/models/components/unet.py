@@ -243,9 +243,9 @@ if __name__ == "__main__":
     # device = 
     model = Unet(3,
                  image_size=28,
-                 hidden_dims=[128, 256, 512, 1024],
+                 hidden_dims=[128, 256, 512, 1024, 2048],
                  use_linear_attn=False)
-    x = torch.ones(16, 3, 28, 28).to("cuda:3")
+    x = torch.ones(16, 3, 64, 64).to("cuda:3")
     time = torch.randint(0, 16, (16, )).to("cuda:3")
     model = model.to("cuda:3")
     

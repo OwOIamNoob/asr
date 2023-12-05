@@ -132,10 +132,10 @@ class DDIMScheduler:
                  device=None):
         
         device = "cpu" if device is None else device
-        img = torch.randn((batch_size, 
-                             model.in_channels, 
-                             model.sample_size,
-                             model.sample_size), generator=generator)
+        img = torch.randn(( batch_size, 
+                            model.in_channels, 
+                            model.sample_size,
+                            model.sample_size), generator=generator)
         img = img.to(device)
         
         self.set_timesteps(num_inference_steps)
@@ -154,7 +154,7 @@ class DDIMScheduler:
             # b rgb
             img_cpu = img.cpu().permute(0, 2, 3, 1).numpy()
             
-            if output_type == "pil":
+            if output_type == "pil"
                 img_cpu = numpy_to_pil(img_cpu)
             
             return {"sample": img_cpu, "sample_py": img}
