@@ -3,15 +3,12 @@ from typing import Optional, Tuple
 import torch.nn as nn
 from torch import Tensor
 
-from Transformer.modules.multi_head_attention import MultiHeadAttention
-from Transformer.modules.positionwise_feed_forward import PositionwiseFeedForward
+from src.models.transformer.modules.multi_head_attention import MultiHeadAttention
+from src.models.transformer.modules.positionwise_feed_forward import PositionwiseFeedForward
 
 
 class DecoderLayer(nn.Module):
     r"""
-    DecoderLayer is made up of self-attention, multi-head attention and feedforward network.
-    This standard decoders layer is based on the paper "Attention Is All You Need".
-
     Args:
         d_model: dimension of model (default: 512)
         num_heads: number of attention heads (default: 8)
@@ -52,37 +49,36 @@ class DecoderLayer(nn.Module):
         self,
         inputs: Tensor,
         encoder_outputs: Tensor,
-        src_mask: Tensor,
-        tgt_mask: Tensor
-    ) -> Tensor:
+        self_attn_mask: Optional[Tensor] = None,
+        encoder_attn_mask: Optional[Tensor] = None,
+    ) -> Tuple[Tensor, Tensor, Tensor]:
         r"""
         Forward propagate transformer decoder layer.
 
         Inputs:
             inputs (torch.FloatTensor): input sequence of transformer decoder layer
             encoder_outputs (torch.FloatTensor): outputs of encoder
-            src_mask (torch.BoolTensor): mask of source language
-            tgt_mask (torch.BoolTensor): mask of target language
+            self_attn_mask (torch.BoolTensor): mask of self attention
+            encoder_output_mask (torch.BoolTensor): mask of encoder outputs
 
         Returns:
             outputs (torch.FloatTensor): output of transformer decoder layer
+            self_attn (torch.FloatTensor): output of self attention
+            encoder_attn (torch.FloatTensor): output of encoder attention
         """
         residual = inputs
         inputs = self.self_attention_prenorm(inputs)
-        outputs = self.self_attention(inputs, inputs, inputs, tgt_mask)
-        outputs = self.self_attention_postnorm(outputs)
+        outputs, self_attn = self.self_attention(inputs, inputs, inputs, self_attn_mask)
         outputs += residual
 
         residual = outputs
         outputs = self.decoder_attention_prenorm(outputs)
-        outputs = self.decoder_attention(outputs, encoder_outputs, encoder_outputs, src_mask)
-        outputs = self.decoder_attention_postnorm(outputs)
+        outputs, encoder_attn = self.decoder_attention(outputs, encoder_outputs, encoder_outputs, encoder_attn_mask)
         outputs += residual
 
         residual = outputs
         outputs = self.feed_forward_prenorm(outputs)
         outputs = self.feed_forward(outputs)
-        outputs = self.feed_forward_postnorm(outputs)
         outputs += residual
 
-        return outputs
+        return outputs, self_attn, encoder_attn

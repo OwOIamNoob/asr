@@ -5,16 +5,15 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 
-from Transformer.layers.encoder_layer import EncoderLayer
-from Transformer.modules.wrapper import Linear
-from Transformer.modules.positional_encoding import PositionalEncoding
+from src.models.transformer.layers.encoder_layer import EncoderLayer
+from src.models.transformer.modules.wrapper import Linear
+from src.models.transformer.modules.positional_encoding import PositionalEncoding
+from src.models.transformer.modules.mask import get_attn_pad_mask
 
 
 class Encoder(nn.Module):
     r"""
     The TransformerEncoder is composed of a stack of N identical layers.
-    Each layer has two sub-layers. The first is a multi-head self-attention mechanism,
-    and the second is a simple, position-wise fully connected feed-forward network.
 
     Args:
         input_dim: dimension of feature vector
@@ -23,38 +22,41 @@ class Encoder(nn.Module):
         num_layers: number of encoders layers (default: 6)
         num_heads: number of attention heads (default: 8)
         dropout_p:  probability of dropout (default: 0.3)
-        max_len: maximum sequence length (default: 5000)
 
     Inputs:
         - **inputs**: list of sequences, whose length is the batch size and within which each sequence is list of tokens
-        - **src_mask**: mask of source language
+        - **input_lengths**: list of sequence lengths
 
     Returns:
+        (Tensor, Tensor):
+
         * outputs: A output sequence of encoders. `FloatTensor` of size ``(batch, seq_length, dimension)``
+        * output_lengths: The length of encoders outputs. ``(batch)``
     """
 
     def __init__(
         self,
+        vocab_size: int,
         input_dim: int = 80,
         d_model: int = 512,
         d_ff: int = 2048,
         num_layers: int = 6,
         num_heads: int = 8,
         dropout_p: float = 0.3,
-        max_length: int = 5000
     ) -> None:
         super(Encoder, self).__init__()
+
+        self.vocab_size = vocab_size
 
         self.d_model = d_model
         self.num_layers = num_layers
         self.num_heads = num_heads
-
+        
         self.input_proj = Linear(input_dim, d_model)
         self.input_norm = nn.LayerNorm(d_model)
-
-        self.positional_encoding = PositionalEncoding(d_model, max_length=max_length)
-
         self.input_dropout = nn.Dropout(p=dropout_p)
+        
+        self.positional_encoding = PositionalEncoding(d_model)
 
         self.layers = nn.ModuleList(
             [
@@ -70,26 +72,41 @@ class Encoder(nn.Module):
 
     def forward(
         self,
-        inputs: Tensor,
-        src_mask: Tensor
-    ) -> Tensor:
+        inputs: torch.Tensor,
+        input_lengths: torch.Tensor,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         r"""
-        Forward propagate `inputs` for  encoders training.
+        Forward propagate a `inputs` for  encoders training.
 
         Args:
             inputs (torch.FloatTensor): A input sequence passed to encoders. Typically for inputs this will be a padded
                 `FloatTensor` of size ``(batch, seq_length, dimension)``.
-            src_mask (torch.BoolTensor): mask of source language
+            input_lengths (torch.LongTensor): The length of input tensor. ``(batch)``
 
         Returns:
+            (Tensor, Tensor):
+
             * outputs: A output sequence of encoders. `FloatTensor` of size ``(batch, seq_length, dimension)``
+            * output_lengths: The length of encoders outputs. ``(batch)``
         """
+        self_attn_mask = get_attn_pad_mask(inputs, input_lengths, inputs.size(1))
 
         outputs = self.input_norm(self.input_proj(inputs))
         outputs += self.positional_encoding(outputs.size(1))
         outputs = self.input_dropout(outputs)
 
         for layer in self.layers:
-            outputs = layer(outputs, src_mask)
+            outputs, attn = layer(outputs, self_attn_mask)
 
-        return outputs
+        return outputs, input_lengths
+
+    
+    def count_parameters(self) -> int:
+        r"""Count parameters of encoders"""
+        return sum([p.numel for p in self.parameters()])
+
+    def update_dropout(self, dropout_p: float) -> None:
+        r"""Update dropout probability of encoders"""
+        for name, child in self.named_children():
+            if isinstance(child, nn.Dropout):
+                child.p = dropout_p

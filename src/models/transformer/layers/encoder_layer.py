@@ -4,13 +4,11 @@ from typing import Tuple
 import torch.nn as nn
 from torch import Tensor
 
-from Transformer.modules.multi_head_attention import MultiHeadAttention
-from Transformer.modules.positionwise_feed_forward import PositionwiseFeedForward
+from src.models.transformer.modules.multi_head_attention import MultiHeadAttention
+from src.models.transformer.modules.positionwise_feed_forward import PositionwiseFeedForward
 
 class EncoderLayer(nn.Module):
     r"""
-    EncoderLayer is made up of self-attention and feedforward network.
-
     Args:
         d_model: dimension of model (default: 512)
         num_heads: number of attention heads (default: 8)
@@ -22,7 +20,10 @@ class EncoderLayer(nn.Module):
         src_mask (torch.BoolTensor): mask of source language
 
     Returns:
+        (Tensor, Tensor)
+
         * outputs (torch.FloatTensor): output of transformer encoder layer
+        * attn (torch.FloatTensor): attention of transformer encoder layer
     """
 
     def __init__(
@@ -40,7 +41,7 @@ class EncoderLayer(nn.Module):
         self.feed_forward = PositionwiseFeedForward(d_model, d_ff, dropout_p)
         
 
-    def forward(self, inputs: Tensor, src_mask: Tensor = None) -> Tuple[Tensor, Tensor]:
+    def forward(self, inputs: Tensor, src_mask: Tensor) -> Tuple[Tensor, Tensor]:
         r"""
         Forward propagate of transformer encoder layer.
 
@@ -50,6 +51,7 @@ class EncoderLayer(nn.Module):
 
         Returns:
             outputs (torch.FloatTensor): output of transformer encoder layer
+            attn (torch.FloatTensor): attention of transformer encoder layer
         """
         residual = inputs
         inputs = self.attention_prenorm(inputs)
@@ -61,5 +63,5 @@ class EncoderLayer(nn.Module):
         outputs = self.feed_forward(outputs)
         outputs += residual
 
-        return outputs
+        return outputs, attn
 
