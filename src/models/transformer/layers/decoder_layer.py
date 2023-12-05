@@ -49,8 +49,8 @@ class DecoderLayer(nn.Module):
         self,
         inputs: Tensor,
         encoder_outputs: Tensor,
-        src_mask: Tensor,
-        tgt_mask: Tensor
+        self_attn_mask: Optional[Tensor] = None,
+        encoder_attn_mask: Optional[Tensor] = None,
     ) -> Tuple[Tensor, Tensor, Tensor]:
         r"""
         Forward propagate transformer decoder layer.
@@ -58,8 +58,8 @@ class DecoderLayer(nn.Module):
         Inputs:
             inputs (torch.FloatTensor): input sequence of transformer decoder layer
             encoder_outputs (torch.FloatTensor): outputs of encoder
-            src_mask (torch.BoolTensor): mask of source language
-            tgt_mask (torch.BoolTensor): mask of target language
+            self_attn_mask (torch.BoolTensor): mask of self attention
+            encoder_output_mask (torch.BoolTensor): mask of encoder outputs
 
         Returns:
             outputs (torch.FloatTensor): output of transformer decoder layer
@@ -68,20 +68,17 @@ class DecoderLayer(nn.Module):
         """
         residual = inputs
         inputs = self.self_attention_prenorm(inputs)
-        outputs, self_attn = self.self_attention(inputs, inputs, inputs, tgt_mask)
-        outputs = self.self_attention_postnorm(outputs)
+        outputs, self_attn = self.self_attention(inputs, inputs, inputs, self_attn_mask)
         outputs += residual
 
         residual = outputs
         outputs = self.decoder_attention_prenorm(outputs)
-        outputs, encoder_attn = self.decoder_attention(outputs, encoder_outputs, encoder_outputs, src_mask)
-        outputs = self.decoder_attention_postnorm(outputs)
+        outputs, encoder_attn = self.decoder_attention(outputs, encoder_outputs, encoder_outputs, encoder_attn_mask)
         outputs += residual
 
         residual = outputs
         outputs = self.feed_forward_prenorm(outputs)
         outputs = self.feed_forward(outputs)
-        outputs = self.feed_forward_postnorm(outputs)
         outputs += residual
 
         return outputs, self_attn, encoder_attn

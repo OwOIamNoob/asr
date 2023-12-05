@@ -139,9 +139,9 @@ class Decoder(nn.Module):
     def forward(
         self,
         encoder_outputs: torch.Tensor,
-        targets: torch.LongTensor,
-        encoder_output_lengths: torch.Tensor,
-        target_lengths: torch.Tensor,
+        targets: Optional[torch.LongTensor] = None,
+        encoder_output_lengths: torch.Tensor=None,
+        target_lengths: torch.Tensor = None,
         teacher_forcing_ratio: float = 1.0,
     ) -> torch.Tensor:
         r"""

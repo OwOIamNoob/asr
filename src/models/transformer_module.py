@@ -12,9 +12,6 @@ from src.models.transformer.model.decoder import Decoder
 
 from src.models.transformer.modules.utils import get_class_name
 
-from src.models.transformer.tokenizers.tokenizer import Tokenizer
-# TODO: USE OWN TOKENIZER INSTEAD OF THE DEFAULT ONE.
-
 
 class TransformerLitModule(pl.LightningModule):
     r"""
@@ -33,37 +30,28 @@ class TransformerLitModule(pl.LightningModule):
         outputs (dict): Result of model predictions.
     """
 
-    def __init__(self, configs: DictConfig, tokenizer: Tokenizer) -> None:
-        super(TransformerLitModule, self).__init__(configs, tokenizer)
-        self.configs = configs
-        self.teacher_forcing_ratio = configs.model.teacher_forcing_ratio
+    def __init__(
+        self, 
+        embedding,
+        encoder: Encoder, 
+        decoder: Decoder, 
+        pad_id: int, 
+        sos_id: int,
+        eos_id: int,
+        teacher_forcing_ratio: float,
+    ) -> None:
+        super(TransformerLitModule, self).__init__()
+        self.teacher_forcing_ratio = teacher_forcing_ratio
 
-        self.pad_id=self.tokenizer.pad_id,
-        self.sos_id=self.tokenizer.sos_id,
-        self.eos_id=self.tokenizer.eos_id,
+        self.criterion = torch.nn.CrossEntropyLoss(ignore_index=pad_id)
 
-        self.encoder = Encoder(
-            vocab_size=self.configs.vocab_size,
-            input_dim=self.configs.audio.num_mels,
-            d_model=self.configs.model.d_model,
-            d_ff=self.configs.model.d_ff,
-            num_layers=self.configs.model.num_encoder_layers,
-            num_heads=self.configs.model.num_attention_heads,
-            dropout_p=self.configs.model.encoder_dropout_p,
-        )
+        self.pad_id=pad_id,
+        self.sos_id=sos_id,
+        self.eos_id=eos_id,
 
-        self.decoder = Decoder(
-            vocab_size=self.configs.vocab_size,
-            d_model=self.configs.model.d_model,
-            d_ff=self.configs.model.d_ff,
-            num_layers=self.configs.model.num_decoder_layers,
-            num_heads=self.configs.model.num_attention_heads,
-            dropout_p=self.configs.model.decoder_dropout_p,
-            pad_id=self.tokenizer.pad_id,
-            sos_id=self.tokenizer.sos_id,
-            eos_id=self.tokenizer.eos_id,
-            max_length=self.configs.model.max_length,
-        )
+        self.embedding = embedding
+        self.encoder = encoder
+        self.decoder = decoder
 
     def set_beam_decoder(self, beam_size: int = 3):
         """
@@ -79,8 +67,6 @@ class TransformerLitModule(pl.LightningModule):
         self,
         stage: str,
         logits: Tensor,
-        encoder_logits: Tensor,
-        encoder_output_lengths: Tensor,
         targets: Tensor,
         target_lengths: Tensor,
     ) -> OrderedDict:
@@ -103,7 +89,8 @@ class TransformerLitModule(pl.LightningModule):
         Forward propagate a `inputs` and `targets` pair for inference.
 
         Inputs:
-            inputs (torch.FloatTensor): A input sequence passed to encoders. Typically for inputs this will be a padded `FloatTensor` of size ``(batch, seq_length, dimension)``.
+            inputs (torch.FloatTensor): A input sequence passed to encoders. 
+            Typically for inputs this will be a padded `FloatTensor` of size ``(batch, seq_length, dimension)``.
             input_lengths (torch.LongTensor): The length of input tensor. ``(batch)``
 
         Returns:
@@ -111,7 +98,8 @@ class TransformerLitModule(pl.LightningModule):
                 `encoder_logits`, `encoder_output_lengths`.
         """
         logits = None
-        encoder_outputs, encoder_logits, encoder_output_lengths = self.encoder(inputs, input_lengths)
+        inputs = self.embedding(inputs)
+        encoder_outputs, encoder_output_lengths = self.encoder(inputs, input_lengths)
 
         if get_class_name(self.decoder) == "BeamSearchDecoder":
             predictions = self.decoder(encoder_outputs, encoder_output_lengths)
@@ -126,24 +114,23 @@ class TransformerLitModule(pl.LightningModule):
             "predictions": predictions,
             "logits": logits,
             "encoder_outputs": encoder_outputs,
-            "encoder_logits": encoder_logits,
             "encoder_output_lengths": encoder_output_lengths,
         }
     
-    def training_step(self, batch: tuple, batch_idx: int) -> OrderedDict:
+    def training_step(self, batch: tuple) -> OrderedDict:
         r"""
         Forward propagate a `inputs` and `targets` pair for training.
 
         Inputs:
             train_batch (tuple): A train batch contains `inputs`, `targets`, `input_lengths`, `target_lengths`
-            batch_idx (int): The index of batch
 
         Returns:
             loss (torch.Tensor): loss for training
         """
         inputs, targets, input_lengths, target_lengths = batch
 
-        encoder_outputs, encoder_logits, encoder_output_lengths = self.encoder(inputs, input_lengths)
+        inputs = self.embedding(inputs)
+        encoder_outputs, encoder_output_lengths = self.encoder(inputs, input_lengths)
         if get_class_name(self.decoder) == "Decoder":
             logits = self.decoder(
                 encoder_outputs=encoder_outputs,
@@ -158,8 +145,6 @@ class TransformerLitModule(pl.LightningModule):
         return self.collect_outputs(
             stage="train",
             logits=logits,
-            encoder_logits=encoder_logits,
-            encoder_output_lengths=encoder_output_lengths,
             targets=targets,
             target_lengths=target_lengths,
         )
@@ -177,7 +162,8 @@ class TransformerLitModule(pl.LightningModule):
         """
         inputs, targets, input_lengths, target_lengths = batch
 
-        encoder_outputs, encoder_logits, encoder_output_lengths = self.encoder(inputs, input_lengths)
+        inputs = self.embedding(inputs)
+        encoder_outputs, encoder_output_lengths = self.encoder(inputs, input_lengths)
         logits = self.decoder(
             encoder_outputs,
             encoder_output_lengths=encoder_output_lengths,
@@ -186,7 +172,6 @@ class TransformerLitModule(pl.LightningModule):
         return self.collect_outputs(
             stage="val",
             logits=logits,
-            encoder_logits=encoder_logits,
             encoder_output_lengths=encoder_output_lengths,
             targets=targets,
             target_lengths=target_lengths,
@@ -205,7 +190,8 @@ class TransformerLitModule(pl.LightningModule):
         """
         inputs, targets, input_lengths, target_lengths = batch
 
-        encoder_outputs, encoder_logits, encoder_output_lengths = self.encoder(inputs, input_lengths)
+        inputs = self.embedding(inputs)
+        encoder_outputs, encoder_output_lengths = self.encoder(inputs, input_lengths)
         logits = self.decoder(
             encoder_outputs,
             encoder_output_lengths=encoder_output_lengths,
@@ -214,7 +200,6 @@ class TransformerLitModule(pl.LightningModule):
         return self.collect_outputs(
             stage="test",
             logits=logits,
-            encoder_logits=encoder_logits,
             encoder_output_lengths=encoder_output_lengths,
             targets=targets,
             target_lengths=target_lengths,

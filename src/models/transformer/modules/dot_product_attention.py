@@ -38,23 +38,20 @@ class DotProductAttention(nn.Module):
         value: Tensor,
         mask: Optional[Tensor] = None,
     ) -> Tuple[Tensor, Tensor]:
-        #   Almost certain query, key and value will always have shape (batch, num_heads, d_model, d_head).
-        #   Such an if statement will not be necessary.
-        # if len(query.size()) == 3:
-            # score = torch.bmm(query, key.transpose(1, 2)) / self.sqrt_dim
-        # else:
-        score = torch.matmul(query, key.transpose(2, 3)) / self.sqrt_dim
+        if len(query.size()) == 3:# (num_heads, d_model, d_head).
+            score = torch.bmm(query, key.transpose(1, 2)) / self.sqrt_dim
+        else: # (batch, num_heads, d_model, d_head).
+            score = torch.matmul(query, key.transpose(2, 3)) / self.sqrt_dim
 
         if mask is not None:
             score.masked_fill_(mask, -1e4) # -1e9 if it isn't small enough.
 
         attn = F.softmax(score, -1)
 
-        #   Almost certain query, key and value will always have shape (batch, num_heads, d_model, d_head).
-        #   Such an if statement will not be necessary.
-        # if len(query.size()) == 3:
-            # context = torch.bmm(attn, value)
-        # else:
-        context = torch.matmul(attn, value)
+        
+        if len(query.size()) == 3: # (num_heads, d_model, d_head).
+            context = torch.bmm(attn, value)
+        else: # (batch, num_heads, d_model, d_head).
+            context = torch.matmul(attn, value)
 
         return context, attn

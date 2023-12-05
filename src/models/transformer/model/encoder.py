@@ -28,11 +28,9 @@ class Encoder(nn.Module):
         - **input_lengths**: list of sequence lengths
 
     Returns:
-        (Tensor, Tensor, Tensor):
+        (Tensor, Tensor):
 
         * outputs: A output sequence of encoders. `FloatTensor` of size ``(batch, seq_length, dimension)``
-        * encoder_logits: Log probability of encoders outputs will be passed to CTC Loss.
-            If joint_ctc_attention is False, return None.  ``(batch, seq_length, vocab_size)``
         * output_lengths: The length of encoders outputs. ``(batch)``
     """
 
