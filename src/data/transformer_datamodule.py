@@ -7,9 +7,6 @@ import datasets
 from pathlib import Path
 from pytorch_lightning import LightningDataModule
 from torch.utils.data import ConcatDataset, DataLoader, Dataset, random_split
-from torchvision.datasets import MNIST
-from torchvision.transforms import transforms
-from transformers.models.auto.tokenization_auto import AutoTokenizer
 from transformers import DataCollatorWithPadding
 
 #functional imports
@@ -38,6 +35,7 @@ class TransformerDataModule(LightningDataModule):
 
     def __init__(
         self,
+        vocab: components.vocab.Vocab,
         data_dir: str,
         dataset_name: str,
         batch_size: int = 64,
@@ -53,7 +51,7 @@ class TransformerDataModule(LightningDataModule):
 
         self.dataset = None
         self.collator_fn = None
-
+        
         self.eval_key = "validation"
         self.test_key = "test"
 

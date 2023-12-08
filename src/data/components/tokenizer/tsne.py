@@ -26,7 +26,7 @@ stride = 1
 print(weights.shape)
 x = input("Continue?")
 if x == 'n':
-    exit 0
+    exit()
 file.write(str(len(key) + stride) + "\t" + str(weights.shape[1]) + "\t" + str(stride))
 file.write("\n<pad>" + "\t" + "0")
 for k in key:
@@ -41,7 +41,7 @@ if not torch.is_tensor(tensor):
     tensor = torch.tensor(tensor).to("cuda:2")
 # if np.isnan(tensor).any() or np.isinf(tensor).any():
 #     raise ValueError("What the fuck")
-u, s, v = torch.pca_lowrank(tensor)
+u, s, v = torch.pca_lowrank(tensor, q = 300, center=True)
 print(u.shape, s.shape, v.shape)
 reduced = tensor @ v[:, :100]
 

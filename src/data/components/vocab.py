@@ -79,13 +79,13 @@ class Vocab:
                  device: str = "cpu"):
         self.weights = []
         self.stride = stride
-        self.embedding = None
+        self.embedder = None
         self.vocab = dict()
         self.vocab_size = 0
         self.device = device
         if not ckpt_path and (not vocab_path or not weights_path):
             raise AssertionError("What the heck do u want me to do ?")
-        if not vocab_path or not weights_path: 
+        if not vocab_path and weights_path: 
             self.stride = 3
             self.weights = [0, 0, 0]
             self.load(ckpt_path, self.stride)
@@ -99,6 +99,8 @@ class Vocab:
                 self.weights = np.vstack(self.weights)
             self.weights = torch.from_numpy(self.weights.astype(np.float32))
             self.embedder = Embedding.from_pretrained(self.weights, freeze=False, padding_idx=0)
+        elif not weights_path:
+            self.load_dict(vocab_path)
         else:
             self.load_weights(vocab_path, weights_path, device)
         
@@ -110,7 +112,21 @@ class Vocab:
             self.tokenizer = pythainlp.tokenize.Tokenizer(self.vocab.keys(), engine='newmm')
         
         
-        
+    def load_dict(self, vocab_path):
+        file = open(vocab_path, "r")
+        self.vocab = dict()
+        header = file.readline()
+        vocab_size, dim, stride = header.strip().split()
+        self.vocab_size = int(vocab_size)
+        self.dim = int(dim)
+        self.stride = int(stride)
+        print("Loading {} words with {} features with {} addition keys".format(self.vocab_size, self.dim, self.stride)) 
+        for line in file:
+            parts = line.split("\t")
+            id = int(parts[-1])
+            word = " ".join(parts[:-1])
+            if word not in self.vocab:
+                self.vocab[word] = id
         
     def load_weights(self, vocab_path, weights_path, device):
         file = open(vocab_path, "r")
@@ -125,11 +141,11 @@ class Vocab:
             parts = line.split("\t")
             id = int(parts[-1])
             word = " ".join(parts[:-1])
-            self.vocab[word] = id
+            if word not in self.vocab:
+                self.vocab[word] = id
         self.weights = torch.load(weights_path).to(device)
         print("Weight dimension:", self.weights.size())
-        self.embedder = Embedding.from_pretrained(self.weights, freeze=False, padding_idx=0, )
-        print(self.vocab[' '])
+        self.embedder = Embedding.from_pretrained(self.weights, freeze=True, padding_idx=0, )
         pass
         
         
@@ -163,8 +179,20 @@ class Vocab:
                 break
     
     def number_decomposition(self, seq):
-        
-            
+        number = []
+        checkpoint = 0
+        same = False
+        for idx in range(len(seq)):
+            if idx == len(seq) - 1:
+                number.append(seq[checkpoint:idx + 1])
+            elif seq[idx + 1].isnumeric() != same or seq[idx + 1].isnumeric() is True:
+                number.append(seq[checkpoint:idx + 1])
+                checkpoint = idx + 1
+                same = seq[idx + 1].isnumeric()
+        print(number)
+        return number  
+    
+    
     def tokenize(self, seq):
         seq = replace_all(seq, dict_map)
         # seq = re.sub(r"(@\[A-Za-z0-9]+)|([^0-9A-Za-z \t])|(\w+:\/\/\S+)|^rt|http.+?", "", seq)
@@ -175,12 +203,18 @@ class Vocab:
             tokens = self.tokenizer.word_tokenize(seq)
         else:
             tokens = self.tokenizer.tokenize(seq)
-        tokens = [token.strip(u'\u200b') for token in tokens if token != '\u200b']
-        print(tokens)
-
-        return tokens
+        final = []
+        for token in tokens:
+            if token != '\u200b':
+                token = token.strip(u'\u200b')
+            try:
+                index = self.vocab[token]
+                final += [token]
+            except:
+                token = self.number_decomposition(token)
+                final += token
+        return final
         
-    
     def get_weights(self):
         return self.weights
     
@@ -191,13 +225,17 @@ class Vocab:
         ids = []
         skipped = []
         for token in tokens:
-            try:
-                ids.append(self.vocab[token])
-            except:
-                skipped.append(token)
+            if token != ' ':
+                try:
+                    ids.append(self.vocab[token])
+                except:
+                    ids.append(self.vocab['<pad>'])
+                    skipped.append(token)
         return torch.LongTensor(ids), skipped
     
     def embed(self, ids):
+        # if not embedder:
+        #     raise NotImplementError
         if not torch.is_tensor(ids):
             ids = torch.LongTensor(ids.copy()).to(self.device)
         elif ids.device != self.device:
@@ -227,8 +265,8 @@ def load_dict(path):
 if __name__ == "__main__":
     # tokens = sample.strip().split(" ")
     
-    vocab = Vocab(vocab_path="/work/hpc/potato/laos_vi/data/embedding/laos_fix.txt", 
-                  weights_path="/work/hpc/potato/laos_vi/data/embedding/laos_v100d.pt",
+    vocab = Vocab(vocab_path="/work/hpc/potato/laos_vi/data/embedding/laos_glove_dict.txt", 
+                  weights_path="/work/hpc/potato/laos_vi/data/embedding/laos_glove_v100d.pt",
                   stride=0, 
                   tokenizer='lao',
                   init_special_symbol=False)
@@ -244,29 +282,31 @@ if __name__ == "__main__":
     # f.close()
     # weights = vocab.get_weights()
     # torch.save(weights, "data/embedding/vi_emb.pt")
-    file = open("/work/hpc/potato/laos_vi/data/label/train_clean.dat", "r")
-    laos = []
-    unknowns = []
-    for line in file:
-        parts = line.strip().split("\t")
-        tokens = vocab.tokenize(parts[0])
-        print(tokens)
-        indexes, unks = vocab.to_index(tokens)
-        emb = vocab.embed(indexes)
-        print(indexes)
-        unknowns += unks
-        # time.sleep(0.1)
-        laos.append(parts[0])
+    # file = open("/work/hpc/potato/laos_vi/data/label/train_clean.dat", "r")
+    # laos = []
+    # unknowns = []
+    # for line in file:
+    #     parts = line.strip().split("\t")
+    #     tokens = vocab.tokenize(parts[0])
+    #     print(tokens)
+    #     indexes, unks = vocab.to_index(tokens)
+    #     emb = vocab.embed(indexes)
+    #     print(indexes)
+    #     unknowns += unks
+    #     # time.sleep(0.1)
+    #     laos.append(parts[0])
     
-    file.close()
-    output= open("/work/hpc/potato/laos_vi/data/embedding/train_laos_unknowns.txt", "w")
-    for unk in unknowns:
-        output.write(unk + "\n")
+    # file.close()
+    # output= open("/work/hpc/potato/laos_vi/data/embedding/t_train_laos_unknowns.txt", "w")
+    # for unk in unknowns:
+    #     output.write(unk + "\n")
     
-    output.close()
-    # tokens = vocab.tokenize(sample)
-    # indexes = vocab.to_index(tokens)
-    # print(indexes)
-    # emb = vocab.embed(indexes)
-    # print(emb.size(), emb)
+    # output.close()
+    sample = "ຖ້າ ເຈົ້າ ຮູ້ສຶກ ຢ້ານ ທີ່ ຈະ ປະກາດ ຂໍ ໃຫ້ ຊ້ອມ ເວົ້າ ໃນ ແບບ ທີ່ ຍັງ ບໍ່ ມີ ເປົ້າ ຫມາຍ ປະກາດ I like you"
+    tokens = vocab.tokenize(sample)
+    print(tokens)
+    indexes, unks = vocab.to_index(tokens)
+    print(indexes, unks)
+    emb = vocab.embed(indexes)
+    print(emb.size(), emb)
     
