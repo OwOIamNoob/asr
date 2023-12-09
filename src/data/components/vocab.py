@@ -1,11 +1,12 @@
 import numpy as np
 import torch
 from torch.nn import Embedding
+import pyvi.ViTokenizer
 import re
 import time
 #### tokenizer
 import pythainlp
-
+from laonlp.corpus import lao_words
 
 
 
@@ -60,6 +61,20 @@ dict_map = {
     "ụy": "uỵ",
     "Ụy": "Uỵ",
     "ỤY": "UỴ",
+    "ຆ": "ฆ",  # PALI GHA
+    "ຉ": "ฉ",  # PALI CHA
+    "ຌ": "ฌ",  # PALI JHA
+    "ຎ": "ญ",  # PALI NYA
+    "ຏ": "ฏ",  # PALI TTA
+    "ຐ": "ฐ",  # PALI TTHA
+    "ຑ": "ฑ",  # PALI DDA
+    "ຒ": "ฒ",  # PALI DDHA
+    "ຓ": "ณ",  # PALI NNA
+    "ຘ": "ธ",  # PALI DHA
+    "ຠ": "ภ",  # PALI BHA
+    "ຨ": "ศ",  # SANSKRIT SHA
+    "ຩ": "ษ",  # SANSKRIT SSA
+    "ຬ": "ฬ",
     }
 
 def replace_all(text, dict_map):
@@ -83,7 +98,7 @@ class Vocab:
         self.vocab = dict()
         self.vocab_size = 0
         self.device = device
-        if not ckpt_path and (not vocab_path or not weights_path):
+        if not ckpt_path and not vocab_path and not weights_path:
             raise AssertionError("What the heck do u want me to do ?")
         if not vocab_path and weights_path: 
             self.stride = 3
@@ -104,13 +119,11 @@ class Vocab:
         else:
             self.load_weights(vocab_path, weights_path, device)
         
-        if tokenizer == 'vi':
-            self.tokenizer = pyvi.ViTokenizer()
-        elif tokenizer == 'lao':
-            print("Init lao tokenizer")
-            print(len(self.vocab.values()))
-            self.tokenizer = pythainlp.tokenize.Tokenizer(self.vocab.keys(), engine='newmm')
-        
+        if tokenizer == 'lao':
+            # print(list(self.vocab.keys()) + lao_words())
+            self.tokenizer = pythainlp.tokenize.Tokenizer(lao_words() + list(self.vocab.keys()), engine='longest')
+        else:
+            self.tokenizer = pyvi.ViTokenizer.ViTokenizer()
         
     def load_dict(self, vocab_path):
         file = open(vocab_path, "r")
@@ -122,7 +135,7 @@ class Vocab:
         self.stride = int(stride)
         print("Loading {} words with {} features with {} addition keys".format(self.vocab_size, self.dim, self.stride)) 
         for line in file:
-            parts = line.split("\t")
+            parts = line.strip().split()
             id = int(parts[-1])
             word = " ".join(parts[:-1])
             if word not in self.vocab:
@@ -189,30 +202,51 @@ class Vocab:
                 number.append(seq[checkpoint:idx + 1])
                 checkpoint = idx + 1
                 same = seq[idx + 1].isnumeric()
-        print(number)
+        # print(number)
         return number  
     
-    
+    def pyvi_join(self, tokens):
+        checkpoint = 0
+        final = []
+        for i in range(len(tokens)):
+            if i == len(tokens) - 1:
+                string = ''.join(tokens[checkpoint:])
+                # checkpoint = i + 1
+                final.append(string)
+            elif tokens[i] == ' ':
+                string = ''.join(tokens[checkpoint:i])
+                checkpoint = i + 1
+                final.append(string)
+            
+        return final
+        
+        
     def tokenize(self, seq):
+        seq = seq.lower()
         seq = replace_all(seq, dict_map)
         # seq = re.sub(r"(@\[A-Za-z0-9]+)|([^0-9A-Za-z \t])|(\w+:\/\/\S+)|^rt|http.+?", "", seq)
-        print(seq)
+        # print(seq)
         tokens = []
         if isinstance(self.tokenizer, pythainlp.tokenize.Tokenizer):
-            print("Lao tokenizing")
+            # print("Lao tokenizing")
             tokens = self.tokenizer.word_tokenize(seq)
         else:
             tokens = self.tokenizer.tokenize(seq)
+            tokens = self.pyvi_join(tokens)
+            
         final = []
         for token in tokens:
+            token = re.sub(r" ", "", token)
+            if token == ' ' or token == "":
+                continue
             if token != '\u200b':
                 token = token.strip(u'\u200b')
-            try:
+            if token in self.vocab:
                 index = self.vocab[token]
                 final += [token]
-            except:
-                token = self.number_decomposition(token)
-                final += token
+            else:
+                final  += self.number_decomposition(token)
+        # print(final)
         return final
         
     def get_weights(self):
@@ -231,6 +265,8 @@ class Vocab:
                 except:
                     ids.append(self.vocab['<pad>'])
                     skipped.append(token)
+
+        # print(skipped)
         return torch.LongTensor(ids), skipped
     
     def embed(self, ids):
