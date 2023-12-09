@@ -1,6 +1,7 @@
 from argparse import ArgumentError
 from typing import Optional, Tuple
-
+import hydra, omegaconf
+from omegaconf import DictConfig
 import os
 import torch
 from pathlib import Path
@@ -145,44 +146,18 @@ class TransformerDataModule(LightningDataModule):
     def get_embedding(self):
         return self.input_vocab.embedder
 
-
-if __name__ == "__main__":
-        #     data_dir: str,
-        # suffix: list = ['clean'],
-        # input_vocab: str,
-        # target_vocab: str,
-        # batch_size: int = 64,
-        # max_length: int = 256,
-        # num_workers: int = 2,
-        # pin_memory: bool = False
-    # datamodule = TransformerDataModule(data_dir="/work/hpc/potato/laos_vi/data/label/",
-    #                                    input_vocab="/work/hpc/potato/laos_vi/data/embedding/laos_glove_v100d",
-    #                                    target_vocab="/work/hpc/potato/laos_vi/data/embedding/vi_dict")
-    input_vocab = Vocab(vocab_path= "/work/hpc/potato/laos_vi/data/embedding/laos_glove_v100d" + ".txt",
-                                    weights_path = "/work/hpc/potato/laos_vi/data/embedding/laos_glove_v100d"  + ".pt",
-                                    stride = 1,
-                                    init_special_symbol=False,
-                                    tokenizer = 'lao')
-
-    target_vocab = Vocab(vocab_path="/work/hpc/potato/laos_vi/data/embedding/vi_dict" + ".txt",
-                                    init_special_symbol=False,
-                                    tokenizer = 'vi')
-    collator = Collator(masked_language_model=False, pad_val=0)
-    
-    train_dataset = LaosDataset(data_dir = "/work/hpc/potato/laos_vi/data/label/",
-                                             file_type = "dev",
-                                             suffix = ['clean'],
-                                             input_vocab = input_vocab,
-                                             target_vocab = target_vocab)
-    train_dataloader =  DataLoader( dataset=train_dataset,
-                                    batch_size=16,
-                                    num_workers=2,                                    pin_memory=False,
-                                    collate_fn=collator,
-                                    shuffle=True)
+@hydra.main(version_base="1.3", config_path="../../configs", config_name="train.yaml")
+def main(cfg: DictConfig) -> Optional[float]:
+    datamodule = hydra.utils.instantiate(cfg.data)
+    train_dataloader = datamodule.train_dataloader()
     batch = next(iter(train_dataloader))
     inp = batch["inputs"]
     tgt = batch['targets']
     torch.set_printoptions(threshold=10_000)
     print(inp)
     print(tgt)
+    pass
+    
+if __name__ == "__main__":
+    main()
     

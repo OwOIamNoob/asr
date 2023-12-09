@@ -1,0 +1,9 @@
+_target_: src.data.transformer_datamodule.TransformerDataModule
+data_dir: ${paths.data_dir}/label/
+input_vocab: ${paths.data_dir}/embedding/laos_glove_v100d
+target_vocab: ${paths.data_dir}/embedding/vi_dict
+suffix: [clean]
+batch_size: 64
+max_length: 256
+num_workers: 2
+pin_memory: False

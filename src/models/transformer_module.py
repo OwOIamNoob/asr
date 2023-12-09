@@ -44,7 +44,7 @@ class TransformerLitModule(pl.LightningModule):
         self.teacher_forcing_ratio = teacher_forcing_ratio
 
         self.criterion = torch.nn.CrossEntropyLoss(ignore_index=pad_id)
-
+        
         self.pad_id=pad_id,
         self.sos_id=sos_id,
         self.eos_id=eos_id,
