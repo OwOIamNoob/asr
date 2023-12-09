@@ -145,6 +145,7 @@ class TransformerDataModule(LightningDataModule):
     def get_embedding(self):
         return self.input_vocab.embedder
 
+
 if __name__ == "__main__":
         #     data_dir: str,
         # suffix: list = ['clean'],
