@@ -58,9 +58,10 @@ class Collator:
     def __call__(self, batch):
         inputs = []
         targets = []
-        target_weights = []
-        max_label_len = max(sample["target"].size()[0] for sample in batch)
-        max_input_len = max(sample["input"].size()[0] for sample in batch)
+        input_lengths = []
+        target_lengths = []
+        max_label_len = max(sample["target"].size(0) for sample in batch)
+        max_input_len = max(sample["input"].size(0) for sample in batch)
         target_len = max(max_label_len, max_input_len)
         
         if self.pad_val is None:
@@ -68,22 +69,29 @@ class Collator:
             
         for sample in batch:
             # padding and append
+            inp_length = sample['input'].size(0)
             inp = pad(sample['input'], 
-                         (0, target_len - len(sample['input'])), 
+                         (0, target_len - inp_length), 
                          'constant',
                          value=self.pad_val)
+            input_lengths.append(inp_length)
             inputs.append(inp)            
             
+            
+            tgt_length = sample['target'].size(0)
             tgt= pad(sample['target'],
-                        (0, target_len - len(sample['target'])),
+                        (0, target_len - tgt_length),
                         'constant',
                         value=self.pad_val)
             targets.append(tgt)
+            target_lengths.append(tgt_length)
+            
         tgt = torch.stack(targets)
         inp = torch.stack(inputs)
-        return {"inputs": inp,
-                "targets": tgt,
-                "padding_idx": self.pad_val}
+        return {"inputs": torch.stack(targets),
+                "targets": torch.stack(inputs),
+                "input_lengths": torch.IntTensor(input_lengths),
+                "target_lengths": torch.IntTensor(target_lengths)}
         
 if __name__ == "__main__":
     lao_vocab = Vocab(vocab_path="/work/hpc/potato/laos_vi/data/embedding/laos_glove_dict.txt",

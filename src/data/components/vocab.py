@@ -96,6 +96,7 @@ class Vocab:
         self.stride = stride
         self.embedder = None
         self.vocab = dict()
+        self.idx_to_text = None
         self.vocab_size = 0
         self.device = device
         if not ckpt_path and not vocab_path and not weights_path:
@@ -121,8 +122,10 @@ class Vocab:
         
         if tokenizer == 'lao':
             # print(list(self.vocab.keys()) + lao_words())
-            self.tokenizer = pythainlp.tokenize.Tokenizer(lao_words() + list(self.vocab.keys()), engine='longest')
+            self.idx_to_text = lao_words() + list(self.vocab.keys())
+            self.tokenizer = pythainlp.tokenize.Tokenizer(self.idx_to_text, engine='longest')
         else:
+            self.idx_to_text = list(self.vocab.keys())
             self.tokenizer = pyvi.ViTokenizer.ViTokenizer()
         
     def load_dict(self, vocab_path):
@@ -284,10 +287,13 @@ class Vocab:
     def get_emb(self):
         return self.embedder
     
-    def to(device):
+    def to(self, device):
         self.device = device
         self.embedder.to(device)
 
+    def decode(self, ids):
+        return [self.idx_to_text[id] for id in ids]
+    
 def load_dict(path):
     file = open(path, "r")
     header = file.readline()

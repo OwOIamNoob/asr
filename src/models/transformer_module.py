@@ -9,9 +9,10 @@ import pytorch_lightning as pl
 
 from src.models.transformer.model.encoder import Encoder
 from src.models.transformer.model.decoder import Decoder
-
+from src.data.components.vocab import Vocab
 from src.models.transformer.modules.utils import get_class_name
-
+from torchmetrics import MaxMetric, MeanMetric
+from torchmetrics.text import BLEUScore
 
 class TransformerLitModule(pl.LightningModule):
     r"""
@@ -32,26 +33,52 @@ class TransformerLitModule(pl.LightningModule):
 
     def __init__(
         self, 
-        embedding,
-        encoder: Encoder, 
-        decoder: Decoder, 
-        pad_id: int, 
-        sos_id: int,
-        eos_id: int,
+        encoder:    Encoder, 
+        decoder:    Decoder, 
+        pad_id:     int, 
+        sos_id:     int,
+        eos_id:     int,
         teacher_forcing_ratio: float,
+        scheduler:  torch.optim.lr_scheduler,
+        opimizer:   torch.optim.Optimizer,
+        compile:    bool, 
     ) -> None:
         super(TransformerLitModule, self).__init__()
-        self.teacher_forcing_ratio = teacher_forcing_ratio
+        self.save_hyperparameters(logger=False)
 
         self.criterion = torch.nn.CrossEntropyLoss(ignore_index=pad_id)
         
-        self.pad_id=pad_id,
-        self.sos_id=sos_id,
-        self.eos_id=eos_id,
+        self.pad_id=pad_id
+        self.sos_id=sos_id
+        self.eos_id=eos_id
 
-        self.embedding = embedding
+        self.vocab = None
         self.encoder = encoder
         self.decoder = decoder
+        
+        # metric objects for calculating and averaging accuracy across batches
+        self.train_bleu = BLEUScore()
+        self.val_bleu = BLEUScore()
+        self.test_bleu = BLEUScore()
+
+        # for averaging loss across batches
+        self.train_loss = MeanMetric()
+        self.val_loss = MeanMetric()
+        self.test_loss = MeanMetric()
+
+        # for tracking best so far validation accuracy
+        self.val_bleu_best = MaxMetric()
+        
+    def load_vocab(self, vocab: Vocab):
+        self.vocab = vocab
+    
+    def on_train_start(self) -> None:
+        """Lightning hook that is called when training begins."""
+        # by default lightning executes validation step sanity checks before training starts,
+        # so it's worth to make sure validation metrics don't store results from these checks
+        self.val_loss.reset()
+        self.val_bleu.reset()
+        self.val_bleu_best.reset()
 
     def set_beam_decoder(self, beam_size: int = 3):
         """
@@ -71,10 +98,8 @@ class TransformerLitModule(pl.LightningModule):
         target_lengths: Tensor,
     ) -> OrderedDict:
         loss = self.criterion(logits, targets[:, 1:])
-        self.info({f"{stage}_loss": loss})
-
         predictions = logits.max(-1)[1]
-
+        
         return OrderedDict(
             {
                 "loss": loss,
@@ -110,6 +135,7 @@ class TransformerLitModule(pl.LightningModule):
                 teacher_forcing_ratio=0.0,
             )
             predictions = logits.max(-1)[1]
+        
         return {
             "predictions": predictions,
             "logits": logits,
@@ -127,9 +153,9 @@ class TransformerLitModule(pl.LightningModule):
         Returns:
             loss (torch.Tensor): loss for training
         """
-        inputs, targets, input_lengths, target_lengths = batch
+        inputs, targets, input_lengths, target_lengths = batch["inputs"], batch["targets"], batch["inputs_length"], batch["targets_length"]
 
-        inputs = self.embedding(inputs)
+        inputs = self.vocab.embed(inputs)
         encoder_outputs, encoder_output_lengths = self.encoder(inputs, input_lengths)
         if get_class_name(self.decoder) == "Decoder":
             logits = self.decoder(
@@ -137,17 +163,23 @@ class TransformerLitModule(pl.LightningModule):
                 targets=targets,
                 encoder_output_lengths=encoder_output_lengths,
                 target_lengths=target_lengths,
-                teacher_forcing_ratio=self.teacher_forcing_ratio,
+                teacher_forcing_ratio=self.hparams.teacher_forcing_ratio,
             )
         else:
             raise ValueError("Why is your decoder not a Decoder?")
-
-        return self.collect_outputs(
-            stage="train",
-            logits=logits,
-            targets=targets,
-            target_lengths=target_lengths,
-        )
+        
+        loss, predictions, _ =  self.collect_outputs(   stage="train",
+                                                        logits=logits,
+                                                        targets=targets,
+                                                        target_lengths=target_lengths,)
+        
+        
+        self.train_loss(loss)
+        self.train_bleu(predictions, targets)
+        self.log("train/loss", self.train_loss, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("train/bleu", self.train_bleu, on_step=False, on_epoch=True, prog_bar=True)
+        
+        return loss
     
     def validation_step(self, batch: tuple, batch_idx: int) -> OrderedDict:
         r"""
@@ -160,22 +192,44 @@ class TransformerLitModule(pl.LightningModule):
         Returns:
             loss (torch.Tensor): loss for training
         """
-        inputs, targets, input_lengths, target_lengths = batch
+        inputs, targets, input_lengths, target_lengths = batch["inputs"], batch["targets"], batch["inputs_length"], batch["targets_length"]
 
-        inputs = self.embedding(inputs)
+        inputs = self.vocab.embed(inputs)
         encoder_outputs, encoder_output_lengths = self.encoder(inputs, input_lengths)
         logits = self.decoder(
             encoder_outputs,
             encoder_output_lengths=encoder_output_lengths,
             teacher_forcing_ratio=0.0,
         )
-        return self.collect_outputs(
-            stage="val",
-            logits=logits,
-            encoder_output_lengths=encoder_output_lengths,
-            targets=targets,
-            target_lengths=target_lengths,
-        )
+        
+        loss, predictions, _ =  self.collect_outputs(stage="val",
+                                                    logits=logits,
+                                                    encoder_output_lengths=encoder_output_lengths,
+                                                    targets=targets,
+                                                    target_lengths=target_lengths,)
+        
+        self.val_loss(loss)
+        self.val_bleu(predictions, targets)
+        self.log("val/loss", self.val_loss, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("val/bleu", self.val_bleu, on_step=False, on_epoch=True, prog_bar=True)
+    
+    def setup(self, stage: str) -> None:
+        """Lightning hook that is called at the beginning of fit (train + validate), validate,
+        test, or predict.
+
+        This is a good hook when you need to build models dynamically or adjust something about
+        them. This hook is called on every process when using DDP.
+
+        :param stage: Either `"fit"`, `"validate"`, `"test"`, or `"predict"`.
+        """
+        if self.hparams.compile and stage == "fit":
+            self.net = torch.compile(self.net)
+        
+    def on_validation_epoch_end(self) -> None:
+        self.val_bleu.compute()
+        self.val_bleu_best(self.val_bleu)
+        self.log("val/bleu_best", self.val_bleu_best.compute(), sync_dist=True, prog_bar=True)
+        return super().on_validation_epoch_end()
     
     def test_step(self, batch: tuple, batch_idx: int) -> OrderedDict:
         r"""
@@ -188,21 +242,42 @@ class TransformerLitModule(pl.LightningModule):
         Returns:
             loss (torch.Tensor): loss for training
         """
-        inputs, targets, input_lengths, target_lengths = batch
+        inputs, targets, input_lengths, target_lengths = batch["inputs"], batch["targets"], batch["inputs_length"], batch["targets_length"]
 
-        inputs = self.embedding(inputs)
+        inputs = self.vocab.embed(inputs)
         encoder_outputs, encoder_output_lengths = self.encoder(inputs, input_lengths)
         logits = self.decoder(
             encoder_outputs,
             encoder_output_lengths=encoder_output_lengths,
             teacher_forcing_ratio=0.0,
         )
-        return self.collect_outputs(
-            stage="test",
-            logits=logits,
-            encoder_output_lengths=encoder_output_lengths,
-            targets=targets,
-            target_lengths=target_lengths,
-        )
+        loss, predictions, _ = self.collect_outputs(stage="test",
+                                                    logits=logits,
+                                                    encoder_output_lengths=encoder_output_lengths,
+                                                    targets=targets,
+                                                    target_lengths=target_lengths,)
+        self.test_loss(loss)
+        self.test_bleu(predictions, targets)
 
-      
+    def configure_optimizers(self) -> Dict[str, Any]:
+        """Choose what optimizers and learning-rate schedulers to use in your optimization.
+        Normally you'd need one. But in the case of GANs or similar you might have multiple.
+
+        Examples:
+            https://lightning.ai/docs/pytorch/latest/common/lightning_module.html#configure-optimizers
+
+        :return: A dict containing the configured optimizers and learning-rate schedulers to be used for training.
+        """
+        optimizer = self.hparams.optimizer(params=self.trainer.model.parameters())
+        if self.hparams.scheduler is not None:
+            scheduler = self.hparams.scheduler(optimizer=optimizer)
+            return {
+                "optimizer": optimizer,
+                "lr_scheduler": {
+                    "scheduler": scheduler,
+                    "monitor": "val/loss",
+                    "interval": "epoch",
+                    "frequency": 1,
+                },
+            }
+        return {"optimizer": optimizer}
