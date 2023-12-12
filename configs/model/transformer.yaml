@@ -41,7 +41,7 @@ decoder:
 compile: false
 
 pad_id: 2
-sos_id: 1
-eos_id: 0
+sos_id: 0
+eos_id: 1
 
 teacher_forcing_ratio: 0.6

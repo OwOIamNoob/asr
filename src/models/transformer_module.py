@@ -110,9 +110,9 @@ class TransformerLitModule(pl.LightningModule):
         targets: Tensor,
         target_lengths: Tensor,
     ) -> OrderedDict:
-        one_hot_targets = torch.nn.functional.one_hot(targets, num_classes=self.target_vocab.vocab_size)
-        print(logits.size(), one_hot_targets.size())
-        loss = self.criterion(logits, one_hot_targets)
+        # one_hot_targets = torch.nn.functional.one_hot(targets, num_classes=self.target_vocab.vocab_size).view(torch.float)
+        print(logits.size(), targets.size())
+        loss = self.criterion(torch.permute(logits, (0, 2, 1)), targets[:, 1:])
         predictions = logits.max(-1)[1]
         
         return OrderedDict(
@@ -183,18 +183,20 @@ class TransformerLitModule(pl.LightningModule):
         else:
             raise ValueError("Why is your decoder not a Decoder?")
         
-        loss, predictions, _ =  self.collect_outputs(   stage="train",
+        output =  self.collect_outputs(   stage="train",
                                                         logits=logits,
                                                         targets=targets,
                                                         target_lengths=target_lengths,)
         
-        
+        loss, predictions = output["loss"], output["predictions"]
+        prediction_transcripts = [self.target_vocab.view(self.target_vocab.decode(prediction)) for prediction in predictions.numpy()]
+        target_transcripts = [self.target_vocab.view(self.target_vocab.decode(target)) for target in targets.numpy()] 
         self.train_loss(loss)
-        self.train_bleu(predictions, targets)
+        self.train_bleu(prediction_transcripts, target_transcripts)
         self.log("train/loss", self.train_loss, on_step=False, on_epoch=True, prog_bar=True)
         self.log("train/bleu", self.train_bleu, on_step=False, on_epoch=True, prog_bar=True)
         
-        return loss
+        return loss, self.train_bleu, prediction_transcripts, target_transcripts
     
     def validation_step(self, batch: tuple, batch_idx: int) -> OrderedDict:
         r"""
@@ -332,7 +334,7 @@ def main(cfg: DictConfig) -> Optional[float]:
 
     dataloader = DataLoader(dataset=dataset,
                             batch_size=16,
-                            num_workers=2,
+                            num_workers=0,
                             pin_memory=False,
                             collate_fn=collator_fn,
                             shuffle=False,
@@ -343,9 +345,9 @@ def main(cfg: DictConfig) -> Optional[float]:
     cfg.model.decoder.vocab_size = vi_vocab.vocab_size
     model = hydra.utils.instantiate(cfg.model)
     model.load_vocab(lao_vocab, vi_vocab)
-    loss = model.training_step(batch)
-    print(loss)
-
+    loss, bleu, y1, y = model.training_step(batch)
+    print(loss, bleu.compute())
+    print("\n".join(["\t".join([m, n]) for m, n in zip(y1, y)]))
 if __name__ == "__main__":
     main()
     

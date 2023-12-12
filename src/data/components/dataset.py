@@ -40,9 +40,10 @@ class LaosDataset(Dataset):
                         print(line)
                         raise ValueError("Cannot parse")
                     plugin = self.encode(x, y)
-                    index = max(plugin['input'].size(0), plugin['target'].size(0))
-                    self.cluster_indicies[index].append(i)
+                    cluster_id = max(plugin['input'].size(0), plugin['target'].size(0))
+                    self.cluster_indicies[cluster_id].append(i)
                     i += 1
+                    plugins.append(plugin)
         
         return plugins
     
@@ -106,9 +107,9 @@ class Collator:
                         'constant',
                         value=self.sos_id)
             tgt = pad(  tgt,
-                        (1, 0),
+                        (0, 1),
                         'constant',
-                        value=self.sos_id)
+                        value=self.eos_id)
             target_lengths.append(tgt.size(0))
             tgt = pad(   tgt,
                         (0, target_len - tgt_length),
@@ -137,7 +138,7 @@ class ClusterSampler(Sampler):
     
     def __iter__(self):
         batch_list = []
-        for seq_length, indicies in random.shuffle(list(self.dataset.cluster_indicies.items())):
+        for seq_length, indicies in self.dataset.cluster_indicies.items():
             if self.shuffle:
                 random.shuffle(indicies)
 
