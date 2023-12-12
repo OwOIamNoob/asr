@@ -89,9 +89,10 @@ class TransformerDataModule(LightningDataModule):
                                            init_special_symbol=False,
                                            tokenizer = 'lao')
             
-            self.target_vocab = Vocab(vocab_path=self.hparams.target_vocab + ".txt",
-                                            init_special_symbol=False,
-                                            tokenizer = 'vi')
+            self.target_vocab = Vocab(  vocab_path=self.hparams.target_vocab + ".txt",
+                                        weights_path = self.hparams.target_vocab + ".pt",
+                                        init_special_symbol=False,
+                                        tokenizer = 'vi')
             
 
         if not self.train_dataset and not self.test_dataset and not self.val_dataset:
@@ -121,7 +122,7 @@ class TransformerDataModule(LightningDataModule):
                                         target_vocab_size=  self.target_vocab.vocab_size,
                                         max_length= self.hparams.max_length)
 
-    def train_dataloader(self):
+    def train_dataloader(self)  -> DataLoader[any]:
         return DataLoader(
             dataset=    self.train_dataset,
             batch_size= self.hparams.batch_size,
@@ -132,7 +133,7 @@ class TransformerDataModule(LightningDataModule):
             sampler=    ClusterSampler(self.train_dataset, self.hparams.batch_size, True),
         )
 
-    def val_dataloader(self):
+    def val_dataloader(self)    -> DataLoader[any]:
         return DataLoader(
             dataset=    self.val_dataset,
             batch_size= self.hparams.batch_size,
@@ -143,7 +144,7 @@ class TransformerDataModule(LightningDataModule):
             sampler=    ClusterSampler(self.val_dataset, self.hparams.batch_size, False),
         )
 
-    def test_dataloader(self):
+    def test_dataloader(self)   -> DataLoader[any]:
         return DataLoader(
             dataset=    self.test_dataset,
             batch_size= self.hparams.batch_size,
@@ -156,11 +157,28 @@ class TransformerDataModule(LightningDataModule):
         
     def get_embedding(self):
         return self.input_vocab.embedder
+    
+    def teardown(self):
+        pass
 
 @hydra.main(version_base="1.3", config_path="../../configs", config_name="train.yaml")
 def main(cfg: DictConfig) -> Optional[float]:
     datamodule = hydra.utils.instantiate(cfg.data)
     train_dataloader = datamodule.train_dataloader()
+    batch = next(iter(train_dataloader))
+    inp = batch["inputs"]
+    tgt = batch["targets"]
+    # torch.set_printoptions(threshold=10_000)
+    print(inp.size())
+    print(tgt.size())
+    train_dataloader = datamodule.val_dataloader()
+    batch = next(iter(train_dataloader))
+    inp = batch["inputs"]
+    tgt = batch["targets"]
+    # torch.set_printoptions(threshold=10_000)
+    print(inp.size())
+    print(tgt.size())
+    train_dataloader = datamodule.test_dataloader()
     batch = next(iter(train_dataloader))
     inp = batch["inputs"]
     tgt = batch["targets"]
@@ -177,19 +195,5 @@ def main(cfg: DictConfig) -> Optional[float]:
     
 if __name__ == "__main__":
     # main()
-    datamodule = TransformerDataModule(data_dir="/work/hpc/potato/laos_vi/data/label/",
-                                       input_vocab="/work/hpc/potato/laos_vi/data/embedding/laos_glove_v100d",
-                                       target_vocab="/work/hpc/potato/laos_vi/data/embedding/vi_reduce_remap",
-                                       suffix=["clean"],
-                                       batch_size=64,
-                                       max_length=256,
-                                       num_workers=1,
-                                       pin_memory=False,)
-    train_dataloader = datamodule.train_dataloader()
-    batch = next(iter(train_dataloader))
-    inp = batch["input_lengths"]
-    tgt = batch["target_lengths"]
-    # torch.set_printoptions(threshold=10_000)
-    print(inp)
-    print(tgt)
+    main()
     

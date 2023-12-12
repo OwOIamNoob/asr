@@ -5,5 +5,5 @@ target_vocab: ${paths.data_dir}/embedding/vi_reduce_remap
 suffix: [clean]
 batch_size: 64
 max_length: 256
-num_workers: 1
+num_workers: 2
 pin_memory: False

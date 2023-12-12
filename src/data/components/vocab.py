@@ -172,7 +172,11 @@ class Vocab:
         pass
         
         
-        
+    def view(self, tokens):
+        de_stash = [re.sub(r"_", " ", token) if len(token) > 2 else token for token in tokens ]
+        return " ".join(de_stash)
+    
+    
     def load(self, path, stride):
         file = open(path, "r")
         if file is None:

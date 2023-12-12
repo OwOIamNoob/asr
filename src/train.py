@@ -2,13 +2,13 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import hydra
 import lightning as L
-import rootutils
+import pyrootutils
 import torch
 from lightning import Callback, LightningDataModule, LightningModule, Trainer
 from lightning.pytorch.loggers import Logger
 from omegaconf import DictConfig
 
-rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
+pyrootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 # ------------------------------------------------------------------------------------ #
 # the setup_root above is equivalent to:
 # - adding project root dir to PYTHONPATH
@@ -57,9 +57,11 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     log.info(f"Instantiating datamodule <{cfg.data._target_}>")
     datamodule: LightningDataModule = hydra.utils.instantiate(cfg.data)
 
+    cfg.model.encoder.vocab_size = datamodule.input_vocab.vocab_size
+    cfg.model.decoder.vocab_size = datamodule.target_vocab.vocab_size
     log.info(f"Instantiating model <{cfg.model._target_}>")
     model: LightningModule = hydra.utils.instantiate(cfg.model)
-
+    
     log.info("Instantiating callbacks...")
     callbacks: List[Callback] = instantiate_callbacks(cfg.get("callbacks"))
 
@@ -68,7 +70,8 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
 
     log.info(f"Instantiating trainer <{cfg.trainer._target_}>")
     trainer: Trainer = hydra.utils.instantiate(cfg.trainer, callbacks=callbacks, logger=logger)
-
+    datamodule.target_vocab.to(model.device)
+    model.load_vocab(datamodule.input_vocab, datamodule.target_vocab)
     object_dict = {
         "cfg": cfg,
         "datamodule": datamodule,
@@ -84,7 +87,12 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
 
     if cfg.get("train"):
         log.info("Starting training!")
-        trainer.fit(model=model, datamodule=datamodule, ckpt_path=cfg.get("ckpt_path"))
+        train_dataloader = datamodule.train_dataloader()
+        val_dataloader = datamodule.val_dataloader()
+        trainer.fit(model=model, 
+                    train_dataloaders=train_dataloader, 
+                    val_dataloaders=val_dataloader, 
+                    ckpt_path=cfg.get("ckpt_path"))
 
     train_metrics = trainer.callback_metrics
 
