@@ -51,9 +51,11 @@ class LaosDataset(Dataset):
         return self.data[index]
 
 class Collator:
-    def __init__(self, masked_language_model=False, pad_val=0):
+    def __init__(self, masked_language_model=False, sos_id=0, eos_id=1, pad_id=2, target_vocab_size=1, max_length=256):
         self.masked_language_model = masked_language_model
         self.pad_val = pad_val
+        self.target_vocab_size=target_vocab_size
+        self.max_length = max_length
         
     def __call__(self, batch):
         inputs = []
@@ -62,36 +64,57 @@ class Collator:
         target_lengths = []
         max_label_len = max(sample["target"].size(0) for sample in batch)
         max_input_len = max(sample["input"].size(0) for sample in batch)
+        
+        if max_label_len > self.max_length or max_input_len > self.max_length:
+            raise ValueError("String too big gawk gawk")
+        
         target_len = max(max_label_len, max_input_len)
         
         if self.pad_val is None:
             self.pad_val = 0
-            
+        
         for sample in batch:
             # padding and append
             inp_length = sample['input'].size(0)
             inp = pad(sample['input'], 
+                         (1, 0), 
+                         'constant',
+                         value=self.sos_id)
+            inp = pad(inp,
+                      (0, 1),
+                      'constant',
+                      value=self.eos_id)
+            inp = pad(inp, 
                          (0, target_len - inp_length), 
                          'constant',
-                         value=self.pad_val)
-            input_lengths.append(inp_length)
+                         value=self.pad_id)
+            input_lengths.append(inp.size(0))
             inputs.append(inp)            
             
             
             tgt_length = sample['target'].size(0)
-            tgt= pad(sample['target'],
+            tgt = pad(sample['target'],
+                        (1, 0),
+                        'constant',
+                        value=self.sos_id)
+            tgt = pad(  tgt,
+                        (1, 0),
+                        'constant',
+                        value=self.sos_id)
+            tgt = pad(   tgt,
                         (0, target_len - tgt_length),
                         'constant',
-                        value=self.pad_val)
-            targets.append(tgt)
-            target_lengths.append(tgt_length)
+                        value=self.pad_id)
             
-        tgt = torch.stack(targets)
-        inp = torch.stack(inputs)
-        return {"inputs": torch.stack(targets),
+            targets.append(tgt)
+            target_lengths.append(tgt.size(0))
+            
+        # tgt = torch.stack(targets)
+        # inp = torch.stack(inputs)
+        return {"inputs":  torch.nn.functional.one_hot(torch.stack(targets), num_classes=self.target_vocab_size),
                 "targets": torch.stack(inputs),
-                "input_lengths": torch.IntTensor(input_lengths),
-                "target_lengths": torch.IntTensor(target_lengths)}
+                "input_lengths": torch.LongTensor(input_lengths),
+                "target_lengths": torch.LongTensor(target_lengths)}
         
 if __name__ == "__main__":
     lao_vocab = Vocab(vocab_path="/work/hpc/potato/laos_vi/data/embedding/laos_glove_dict.txt",

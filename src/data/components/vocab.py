@@ -82,6 +82,8 @@ def replace_all(text, dict_map):
         text = text.replace(i, j)
     return text
 
+
+
 ############################## vocab ###############################
 class Vocab:
     def __init__(self,
@@ -99,6 +101,11 @@ class Vocab:
         self.idx_to_text = None
         self.vocab_size = 0
         self.device = device
+        
+        self.export = {0, 1, 2}
+        self.library = dict()
+        
+        
         if not ckpt_path and not vocab_path and not weights_path:
             raise AssertionError("What the heck do u want me to do ?")
         if not vocab_path and weights_path: 
@@ -125,7 +132,7 @@ class Vocab:
             self.idx_to_text = lao_words() + list(self.vocab.keys())
             self.tokenizer = pythainlp.tokenize.Tokenizer(self.idx_to_text, engine='longest')
         else:
-            self.idx_to_text = list(self.vocab.keys())
+            self.idx_to_text = dict(zip(self.vocab.values(), self.vocab.keys()))
             self.tokenizer = pyvi.ViTokenizer.ViTokenizer()
         
     def load_dict(self, vocab_path):
@@ -154,7 +161,7 @@ class Vocab:
         self.stride = int(stride)
         print("Loading {} words with {} features with {} addition keys".format(self.vocab_size, self.dim, self.stride)) 
         for line in file:
-            parts = line.split("\t")
+            parts = line.strip().split()
             id = int(parts[-1])
             word = " ".join(parts[:-1])
             if word not in self.vocab:
@@ -163,6 +170,7 @@ class Vocab:
         print("Weight dimension:", self.weights.size())
         self.embedder = Embedding.from_pretrained(self.weights, freeze=True, padding_idx=0, )
         pass
+        
         
         
     def load(self, path, stride):
@@ -270,6 +278,7 @@ class Vocab:
                     skipped.append(token)
 
         # print(skipped)
+        self.export.update(ids)
         return torch.LongTensor(ids), skipped
     
     def embed(self, ids):
@@ -280,6 +289,9 @@ class Vocab:
         elif ids.device != self.device:
             ids.to(self.device)
         return self.embedder(ids)
+    
+    def get_used_vocab(self):
+        return self.export
     
     def __len__(self):
         return self.vocab_size
@@ -293,6 +305,7 @@ class Vocab:
 
     def decode(self, ids):
         return [self.idx_to_text[id] for id in ids]
+    
     
 def load_dict(path):
     file = open(path, "r")

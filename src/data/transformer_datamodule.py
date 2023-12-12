@@ -19,6 +19,8 @@ from laonlp.tokenize import word_tokenize
 import pyvi
 from src.data.components.dataset import *
 from src.data.components.vocab import Vocab
+import numpy as np
+
 
 class TransformerDataModule(LightningDataModule):
     """
@@ -112,7 +114,12 @@ class TransformerDataModule(LightningDataModule):
                                              target_vocab = self.target_vocab)
         
         if not self.collator_fn:
-            self.collator_fn = Collator(masked_language_model=False, pad_val=0)
+            self.collator_fn = Collator(masked_language_model=False, 
+                                        sos_id=self.target_vocab.vocab['<sos>'],
+                                        eos_id=self.target_vocab.vocab['<eos>'],
+                                        pad_id=self.target_vocab.vocab['<pad>'], 
+                                        target_vocab_size=self.target_vocab.vocab_size,
+                                        max_length=self.max_length)
 
     def train_dataloader(self):
         return DataLoader(
@@ -152,11 +159,17 @@ def main(cfg: DictConfig) -> Optional[float]:
     train_dataloader = datamodule.train_dataloader()
     batch = next(iter(train_dataloader))
     inp = batch["inputs"]
-    tgt = batch['targets']
-    torch.set_printoptions(threshold=10_000)
-    print(inp)
-    print(tgt)
-    pass
+    tgt = batch["targets"]
+    # torch.set_printoptions(threshold=10_000)
+    print(inp.size())
+    print(tgt.size())
+    # input_corpus = np.array(sorted(datamodule.input_vocab.get_used_vocab()))
+    # target_corpus = np.array(sorted(datamodule.target_vocab.get_used_vocab()))
+    # print(np.savetxt("/work/hpc/potato/laos_vi/data/embedding/laos_reduced.txt", 
+    #                  input_corpus))
+    # print(np.savetxt("/work/hpc/potato/laos_vi/data/embedding/vi_reduced.txt", 
+    #                  target_corpus))
+    return False
     
 if __name__ == "__main__":
     main()

@@ -68,6 +68,8 @@ class TransformerLitModule(pl.LightningModule):
 
         # for tracking best so far validation accuracy
         self.val_bleu_best = MaxMetric()
+    
+    def one_hot_vector(self, ):
         
     def load_vocab(self, vocab: Vocab):
         self.vocab = vocab

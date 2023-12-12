@@ -4,7 +4,7 @@ import torch
 from lightning import LightningModule
 from torchmetrics import MaxMetric, MeanMetric
 from torchmetrics.classification.accuracy import Accuracy
-
+from torchtext.data.metrics import bleu_score
 
 class MNISTLitModule(LightningModule):
     """Example of a `LightningModule` for MNIST classification.
@@ -125,6 +125,7 @@ class MNISTLitModule(LightningModule):
         # update and log metrics
         self.train_loss(loss)
         self.train_acc(preds, targets)
+        
         self.log("train/loss", self.train_loss, on_step=False, on_epoch=True, prog_bar=True)
         self.log("train/acc", self.train_acc, on_step=False, on_epoch=True, prog_bar=True)
 
