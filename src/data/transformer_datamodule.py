@@ -114,42 +114,46 @@ class TransformerDataModule(LightningDataModule):
                                              target_vocab = self.target_vocab)
         
         if not self.collator_fn:
-            self.collator_fn = Collator(masked_language_model=False, 
-                                        sos_id=self.target_vocab.vocab['<sos>'],
-                                        eos_id=self.target_vocab.vocab['<eos>'],
-                                        pad_id=self.target_vocab.vocab['<pad>'], 
-                                        target_vocab_size=self.target_vocab.vocab_size,
-                                        max_length=self.max_length)
+            self.collator_fn = Collator(masked_language_model=  False, 
+                                        sos_id= self.target_vocab.vocab['<sos>'],
+                                        eos_id= self.target_vocab.vocab['<eos>'],
+                                        pad_id= self.target_vocab.vocab['<pad>'], 
+                                        target_vocab_size=  self.target_vocab.vocab_size,
+                                        max_length= self.hparams.max_length)
 
     def train_dataloader(self):
         return DataLoader(
-            dataset=self.train_dataset,
-            batch_size=self.hparams.batch_size,
+            dataset=    self.train_dataset,
+            batch_size= self.hparams.batch_size,
             num_workers=self.hparams.num_workers,
-            pin_memory=self.hparams.pin_memory,
-            collate_fn=self.collator_fn,
-            shuffle=True,
+            pin_memory= self.hparams.pin_memory,
+            collate_fn= self.collator_fn,
+            shuffle=    False,
+            sampler=    ClusterSampler(self.train_dataset, self.hparams.batch_size, True),
         )
 
     def val_dataloader(self):
         return DataLoader(
-            dataset=self.val_dataset,
-            batch_size=self.hparams.batch_size,
+            dataset=    self.val_dataset,
+            batch_size= self.hparams.batch_size,
             num_workers=self.hparams.num_workers,
-            pin_memory=self.hparams.pin_memory,
-            collate_fn=self.collator_fn,
-            shuffle=False,
+            pin_memory= self.hparams.pin_memory,
+            collate_fn= self.collator_fn,
+            shuffle=    False,
+            sampler=    ClusterSampler(self.val_dataset, self.hparams.batch_size, False),
         )
 
     def test_dataloader(self):
         return DataLoader(
-            dataset=self.test_dataset,
-            batch_size=self.hparams.batch_size,
+            dataset=    self.test_dataset,
+            batch_size= self.hparams.batch_size,
             num_workers=self.hparams.num_workers,
-            pin_memory=self.hparams.pin_memory,
-            collate_fn=self.collator_fn,
-            shuffle=True,
+            pin_memory= self.hparams.pin_memory,
+            collate_fn= self.collator_fn,
+            shuffle=    False,
+            sampler=    ClusterSampler(self.test_dataset, self.hparams.batch_size, False),
         )
+        
     def get_embedding(self):
         return self.input_vocab.embedder
 
@@ -172,5 +176,20 @@ def main(cfg: DictConfig) -> Optional[float]:
     return False
     
 if __name__ == "__main__":
-    main()
+    # main()
+    datamodule = TransformerDataModule(data_dir="/work/hpc/potato/laos_vi/data/label/",
+                                       input_vocab="/work/hpc/potato/laos_vi/data/embedding/laos_glove_v100d",
+                                       target_vocab="/work/hpc/potato/laos_vi/data/embedding/vi_reduce_remap",
+                                       suffix=["clean"],
+                                       batch_size=64,
+                                       max_length=256,
+                                       num_workers=1,
+                                       pin_memory=False,)
+    train_dataloader = datamodule.train_dataloader()
+    batch = next(iter(train_dataloader))
+    inp = batch["input_lengths"]
+    tgt = batch["target_lengths"]
+    # torch.set_printoptions(threshold=10_000)
+    print(inp)
+    print(tgt)
     

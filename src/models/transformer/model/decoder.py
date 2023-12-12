@@ -58,6 +58,7 @@ class Decoder(nn.Module):
     def __init__(
         self,
         vocab_size: int,
+        input_dim:int,
         d_model: int = 512,
         d_ff: int = 512,
         num_layers: int = 6,
@@ -78,8 +79,10 @@ class Decoder(nn.Module):
         self.sos_id = sos_id
         self.eos_id = eos_id
 
-        self.embedding = TransformerEmbedding(vocab_size, pad_id, d_model)
-        self.positional_encoding = PositionalEncoding(d_model)
+        self.embedding = TransformerEmbedding(vocab_size, pad_id, input_dim)
+        self.positional_encoding = PositionalEncoding(input_dim)
+        self.input_proj = nn.Linear(input_dim, d_model)
+        self.input_norm = nn.LayerNorm(d_model)
         self.input_dropout = nn.Dropout(p=dropout_p)
         
         self.layers = nn.ModuleList(
@@ -124,6 +127,7 @@ class Decoder(nn.Module):
         encoder_attn_mask = get_attn_pad_mask(encoder_outputs, encoder_output_lengths, decoder_inputs.size(1))
 
         outputs = self.embedding(decoder_inputs) + self.positional_encoding(positional_encoding_length)
+        outputs = self.input_proj(outputs)
         outputs = self.input_dropout(outputs)
 
         for layer in self.layers:

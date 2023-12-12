@@ -52,6 +52,7 @@ class Encoder(nn.Module):
         self.num_layers = num_layers
         self.num_heads = num_heads
         
+        # self.embedding = 
         self.input_proj = Linear(input_dim, d_model)
         self.input_norm = nn.LayerNorm(d_model)
         self.input_dropout = nn.Dropout(p=dropout_p)

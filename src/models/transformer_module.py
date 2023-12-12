@@ -49,7 +49,7 @@ class TransformerLitModule(pl.LightningModule):
         compile:    bool, 
     ) -> None:
         super(TransformerLitModule, self).__init__()
-        self.save_hyperparameters(logger=False)
+        self.save_hyperparameters(logger=False, ignore=['encoder', 'decoder'])
 
         self.criterion = torch.nn.CrossEntropyLoss(ignore_index=pad_id)
         
@@ -58,7 +58,7 @@ class TransformerLitModule(pl.LightningModule):
         self.eos_id=eos_id
 
         self.input_vocab = None
-        self.vocab = None
+        self.target_vocab = None
         self.encoder = encoder
         self.decoder = decoder
         
@@ -74,6 +74,7 @@ class TransformerLitModule(pl.LightningModule):
 
         # for tracking best so far validation accuracy
         self.val_bleu_best = MaxMetric()
+        # print("Total parameters:", self.encoder.count_parameters())
     
     # must be called before doing anything else    
     def load_vocab(self, input_vocab: Vocab, target_vocab: Vocab):
@@ -109,7 +110,9 @@ class TransformerLitModule(pl.LightningModule):
         targets: Tensor,
         target_lengths: Tensor,
     ) -> OrderedDict:
-        loss = self.criterion(logits, targets[:, 1:])
+        one_hot_targets = torch.nn.functional.one_hot(targets, num_classes=self.target_vocab.vocab_size)
+        print(logits.size(), one_hot_targets.size())
+        loss = self.criterion(logits, one_hot_targets)
         predictions = logits.max(-1)[1]
         
         return OrderedDict(
@@ -166,7 +169,7 @@ class TransformerLitModule(pl.LightningModule):
             loss (torch.Tensor): loss for training
         """
         inputs, targets, input_lengths, target_lengths = batch["inputs"], batch["targets"], batch["input_lengths"], batch["target_lengths"]
-
+        print(target_lengths)
         inputs = self.input_vocab.embed(inputs)
         encoder_outputs, encoder_output_lengths = self.encoder(inputs, input_lengths)
         if get_class_name(self.decoder) == "Decoder":
@@ -297,7 +300,7 @@ class TransformerLitModule(pl.LightningModule):
         return {"optimizer": optimizer}
     
 from torch.utils.data import ConcatDataset, DataLoader, Dataset, random_split
-from src.data.components.dataset import LaosDataset, Collator
+from src.data.components.dataset import LaosDataset, Collator, ClusterSampler
 import hydra
 import omegaconf
 from omegaconf import DictConfig
@@ -332,7 +335,8 @@ def main(cfg: DictConfig) -> Optional[float]:
                             num_workers=2,
                             pin_memory=False,
                             collate_fn=collator_fn,
-                            shuffle=True,)
+                            shuffle=False,
+                            sampler=ClusterSampler(dataset, batch_size=16, shuffle=True))
     
     batch = next(iter(dataloader))
     cfg.model.encoder.vocab_size = lao_vocab.vocab_size

@@ -1,9 +1,12 @@
 from torch.utils.data import Dataset
+from torch.utils.data.sampler import Sampler
 import os
 from src.data.components.vocab import Vocab
 from torch.nn.functional import pad
 import torch 
 import numpy as np
+from collections import defaultdict
+import random
 
 class LaosDataset(Dataset):
     def __init__(self,
@@ -17,6 +20,7 @@ class LaosDataset(Dataset):
         self.suffix = suffix
         self.input_vocab = input_vocab
         self.target_vocab = target_vocab
+        self.cluster_indicies = defaultdict(list)
         self.data = self.prepare()
 
         print(self.input_vocab, self.target_vocab)
@@ -24,6 +28,7 @@ class LaosDataset(Dataset):
         
     def prepare(self):
         print("Loading dataset")
+        i = 0
         plugins = []
         for name in self.suffix:
             path = os.path.join(self.data_dir, self.type + "_" + name + ".dat")
@@ -34,7 +39,10 @@ class LaosDataset(Dataset):
                     except:
                         print(line)
                         raise ValueError("Cannot parse")
-                    plugins.append(self.encode(x, y))
+                    plugin = self.encode(x, y)
+                    index = max(plugin['input'].size(0), plugin['target'].size(0))
+                    self.cluster_indicies[index].append(i)
+                    i += 1
         
         return plugins
     
@@ -83,11 +91,12 @@ class Collator:
                       (0, 1),
                       'constant',
                       value=self.eos_id)
+            input_lengths.append(inp.size(0))
             inp = pad(inp, 
                          (0, target_len - inp_length), 
                          'constant',
                          value=self.pad_id)
-            input_lengths.append(inp.size(0))
+            
             inputs.append(inp)            
             
             
@@ -100,21 +109,53 @@ class Collator:
                         (1, 0),
                         'constant',
                         value=self.sos_id)
+            target_lengths.append(tgt.size(0))
             tgt = pad(   tgt,
                         (0, target_len - tgt_length),
                         'constant',
                         value=self.pad_id)
             
             targets.append(tgt)
-            target_lengths.append(tgt.size(0))
+            
             
         # tgt = torch.stack(targets)
         # inp = torch.stack(inputs)
-        return {"targets":  torch.nn.functional.one_hot(torch.stack(targets), num_classes=self.target_vocab_size),
+        return {"targets":  torch.stack(targets),
                 "inputs": torch.stack(inputs),
                 "input_lengths": torch.LongTensor(input_lengths),
                 "target_lengths": torch.LongTensor(target_lengths)}
+
+class ClusterSampler(Sampler):
+    def __init__(self,
+                 dataset,
+                 batch_size,
+                 shuffle=True):
+        self.dataset = dataset
+        self.batch_size = batch_size
+        self.shuffle = shuffle
+        self.total_added_sample = 0
+    
+    def __iter__(self):
+        batch_list = []
+        for seq_length, indicies in random.shuffle(list(self.dataset.cluster_indicies.items())):
+            if self.shuffle:
+                random.shuffle(indicies)
+
+            for i in range(0, len(indicies), self.batch_size):
+                batch_list += self.fill(indicies[i:i + self.batch_size])
         
+        return iter(batch_list)
+    
+    
+    def fill(self, batch):
+        if len(batch) == self.batch_size:
+            return batch
+        
+        addition = self.batch_size - len(batch)
+        self.total_added_sample += addition
+        
+        return batch + random.choices(batch, k=addition)
+    
 if __name__ == "__main__":
     lao_vocab = Vocab(vocab_path="/work/hpc/potato/laos_vi/data/embedding/laos_glove_dict.txt",
                       weights_path="/work/hpc/potato/laos_vi/data/embedding/laos_glove_v100d.pt",
