@@ -53,7 +53,9 @@ class LaosDataset(Dataset):
 class Collator:
     def __init__(self, masked_language_model=False, sos_id=0, eos_id=1, pad_id=2, target_vocab_size=1, max_length=256):
         self.masked_language_model = masked_language_model
-        self.pad_val = pad_val
+        self.sos_id = sos_id
+        self.eos_id = eos_id
+        self.pad_id = pad_id
         self.target_vocab_size=target_vocab_size
         self.max_length = max_length
         
@@ -69,10 +71,7 @@ class Collator:
             raise ValueError("String too big gawk gawk")
         
         target_len = max(max_label_len, max_input_len)
-        
-        if self.pad_val is None:
-            self.pad_val = 0
-        
+
         for sample in batch:
             # padding and append
             inp_length = sample['input'].size(0)
@@ -111,8 +110,8 @@ class Collator:
             
         # tgt = torch.stack(targets)
         # inp = torch.stack(inputs)
-        return {"inputs":  torch.nn.functional.one_hot(torch.stack(targets), num_classes=self.target_vocab_size),
-                "targets": torch.stack(inputs),
+        return {"targets":  torch.nn.functional.one_hot(torch.stack(targets), num_classes=self.target_vocab_size),
+                "inputs": torch.stack(inputs),
                 "input_lengths": torch.LongTensor(input_lengths),
                 "target_lengths": torch.LongTensor(target_lengths)}
         
