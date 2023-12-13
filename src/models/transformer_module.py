@@ -210,7 +210,7 @@ class TransformerLitModule(LightningModule):
         self.log("train/loss", self.train_loss, on_step=False, on_epoch=True, prog_bar=True)
         self.log("train/bleu", self.train_bleu, on_step=False, on_epoch=True, prog_bar=True)
         
-        return loss, self.train_bleu, prediction_transcripts, target_transcripts
+        return loss
     
     def validation_step(self, batch: tuple, batch_idx: int) -> OrderedDict:
         """
@@ -351,8 +351,7 @@ def main(cfg: DictConfig) -> Optional[float]:
 
     dataloader = DataLoader(dataset=dataset,
                             batch_size=16,
-                            num_workers=0,
-                            num_workers=0,
+                            num_workers=1,
                             pin_memory=False,
                             collate_fn=collator_fn,
                             shuffle=False,
