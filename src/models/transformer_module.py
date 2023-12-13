@@ -116,6 +116,9 @@ class TransformerLitModule(LightningModule):
         # one_hot_targets = torch.nn.functional.one_hot(targets, num_classes=self.target_vocab.vocab_size).view(torch.float)
         print(logits.size(), targets.size())
         loss = self.criterion(torch.permute(logits, (0, 2, 1)), targets[:, 1:])
+        # one_hot_targets = torch.nn.functional.one_hot(targets, num_classes=self.target_vocab.vocab_size).view(torch.float)
+        print(logits.size(), targets.size())
+        loss = self.criterion(torch.permute(logits, (0, 2, 1)), targets[:, 1:])
         predictions = logits.max(-1)[1]
         
         return OrderedDict(
@@ -194,10 +197,10 @@ class TransformerLitModule(LightningModule):
         else:
             raise ValueError("Why is your decoder not a Decoder?")
         
-        output =  self.collect_outputs(   stage="train",
-                                                        logits=logits,
-                                                        targets=targets,
-                                                        target_lengths=target_lengths,)
+        output =  self.collect_outputs( stage="train",
+                                        logits=logits,
+                                        targets=targets,
+                                        target_lengths=target_lengths,)
         
         loss, predictions = output["loss"], output["predictions"]
         # prediction_transcripts = [self.target_vocab.view(self.target_vocab.decode(prediction)) for prediction in predictions.numpy()]
@@ -207,10 +210,10 @@ class TransformerLitModule(LightningModule):
         self.log("train/loss", self.train_loss, on_step=False, on_epoch=True, prog_bar=True)
         self.log("train/bleu", self.train_bleu, on_step=False, on_epoch=True, prog_bar=True)
         
-        return loss
+        return loss, self.train_bleu, prediction_transcripts, target_transcripts
     
     def validation_step(self, batch: tuple, batch_idx: int) -> OrderedDict:
-        r"""
+        """
         Forward propagate a `inputs` and `targets` pair for validation.
 
         Inputs:
@@ -262,7 +265,7 @@ class TransformerLitModule(LightningModule):
         return super().on_validation_epoch_end()
     
     def test_step(self, batch: tuple, batch_idx: int) -> OrderedDict:
-        r"""
+        """
         Forward propagate a `inputs` and `targets` pair for test.
 
         Inputs:
@@ -348,6 +351,7 @@ def main(cfg: DictConfig) -> Optional[float]:
 
     dataloader = DataLoader(dataset=dataset,
                             batch_size=16,
+                            num_workers=0,
                             num_workers=0,
                             pin_memory=False,
                             collate_fn=collator_fn,
