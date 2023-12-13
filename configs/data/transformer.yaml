@@ -1,6 +1,6 @@
 _target_: src.data.transformer_datamodule.TransformerDataModule
 data_dir: ${paths.data_dir}/label_test/
-input_vocab: ${paths.data_dir}/embedding/laos_glove_v100d
+input_vocab: ${paths.data_dir}/embedding/laos_reduce_remap
 target_vocab: ${paths.data_dir}/embedding/vi_reduce_remap
 suffix: [clean]
 batch_size: 16

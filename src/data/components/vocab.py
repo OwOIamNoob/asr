@@ -98,7 +98,7 @@ class Vocab:
         self.stride = stride
         self.embedder = None
         self.vocab = dict()
-        self.idx_to_text = None
+        self.idx_to_text = dict()
         self.vocab_size = 0
         self.device = device
         
@@ -129,11 +129,11 @@ class Vocab:
         
         if tokenizer == 'lao':
             # print(list(self.vocab.keys()) + lao_words())
-            self.idx_to_text = lao_words() + list(self.vocab.keys())
-            self.tokenizer = pythainlp.tokenize.Tokenizer(self.idx_to_text, engine='longest')
+            self.tokenizer = pythainlp.tokenize.Tokenizer(lao_words() + list(self.vocab.keys()), engine='longest')
         else:
-            self.idx_to_text = dict(zip(self.vocab.values(), self.vocab.keys()))
             self.tokenizer = pyvi.ViTokenizer.ViTokenizer()
+        
+        self.idx_to_text = dict(zip(self.vocab.values(), self.vocab.keys()))
         
     def load_dict(self, vocab_path):
         file = open(vocab_path, "r")
@@ -161,10 +161,10 @@ class Vocab:
         self.stride = int(stride)
         print("Loading {} words with {} features with {} addition keys".format(self.vocab_size, self.dim, self.stride)) 
         for line in file:
-            parts = line.strip().split()
+            parts = line.strip().split("\t")
             id = int(parts[-1])
             word = " ".join(parts[:-1])
-            if word not in self.vocab:
+            if word not in self.vocab.keys():
                 self.vocab[word] = id
         self.weights = torch.load(weights_path).to(device)
         print("Weight dimension:", self.weights.size())
