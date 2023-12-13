@@ -46,3 +46,4 @@ sos_id: 0
 eos_id: 1
 
 teacher_forcing_ratio: 0.6
+use_embedding: True

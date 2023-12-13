@@ -43,7 +43,8 @@ class Encoder(nn.Module):
         num_layers: int = 6,
         num_heads: int = 8,
         dropout_p: float = 0.3,
-        pad_id: int = 2
+        pad_id: int = 2,
+        use_embedding: bool = True
     ) -> None:
         super(Encoder, self).__init__()
 
@@ -53,7 +54,13 @@ class Encoder(nn.Module):
         self.num_layers = num_layers
         self.num_heads = num_heads
         
-        self.embedding = nn.Embedding(vocab_size, pad_id, input_dim)
+        if not use_embedding:
+            self.embedding = nn.Embedding(vocab_size, pad_id, input_dim)
+        else:
+            self.embedding = nn.Identity()
+            
+        self.vocab = None
+        
         self.input_proj = Linear(input_dim, d_model)
         self.input_norm = nn.LayerNorm(d_model)
         self.input_dropout = nn.Dropout(p=dropout_p)
@@ -92,7 +99,9 @@ class Encoder(nn.Module):
             * output_lengths: The length of encoders outputs. ``(batch)``
         """
         self_attn_mask = get_attn_pad_mask(inputs, input_lengths, inputs.size(1))
-
+        if self.vocab:
+            inputs = self.vocab.embed(inputs, inputs.device)
+        
         outputs = self.input_norm(self.input_proj(self.embedding(inputs)))
         outputs += self.positional_encoding(outputs.size(1))
         outputs = self.input_dropout(outputs)

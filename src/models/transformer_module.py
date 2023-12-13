@@ -48,6 +48,7 @@ class TransformerLitModule(LightningModule):
         scheduler:  torch.optim.lr_scheduler,
         optimizer:   torch.optim.Optimizer,
         compile:    bool, 
+        use_embedding: bool = False,
     ) -> None:
         super().__init__()
         self.save_hyperparameters(logger=False, ignore=['encoder', 'decoder'])
@@ -79,14 +80,19 @@ class TransformerLitModule(LightningModule):
     
     # must be called before doing anything else    
     def load_vocab(self, input_vocab: Vocab, target_vocab: Vocab):
-        self.target_vocab = target_vocab
+        self.target_vocab   = target_vocab
+        self.input_vocab    = input_vocab
         self.pad_id = target_vocab.vocab['<pad>']
         self.eos_id = target_vocab.vocab['<eos>']
         self.sos_id = target_vocab.vocab['<sos>']
-        self.decoder.embedding = torch.nn.Embedding.from_pretrained(target_vocab.weights,
+        if not self.hparams.use_embedding:
+            self.decoder.embedding = torch.nn.Embedding.from_pretrained(target_vocab.weights,
                                                                     padding_idx=self.pad_id)
-        self.encoder.embedding = torch.nn.Embedding.from_pretrained(input_vocab.weights,
+            self.encoder.embedding = torch.nn.Embedding.from_pretrained(input_vocab.weights,
                                                                     padding_idx=self.pad_id)
+        else:
+            self.encoder.vocab = input_vocab
+            self.decoder.vocab = target_vocab
     
     def on_train_start(self) -> None:
         """Lightning hook that is called when training begins."""
@@ -144,7 +150,6 @@ class TransformerLitModule(LightningModule):
                 `encoder_logits`, `encoder_output_lengths`.
         """
         logits = None
-        inputs = self.input_vocab.embed(inputs)
         encoder_outputs, encoder_output_lengths = self.encoder(inputs, input_lengths)
 
         if get_class_name(self.decoder) == "BeamSearchDecoder":
@@ -184,7 +189,6 @@ class TransformerLitModule(LightningModule):
         """
         inputs, targets, input_lengths, target_lengths = batch["inputs"], batch["targets"], batch["input_lengths"], batch["target_lengths"]
         print(target_lengths)
-        # inputs = self.input_vocab.embed(inputs)
         encoder_outputs, encoder_output_lengths = self.encoder(inputs, input_lengths)
         if get_class_name(self.decoder) == "Decoder":
             logits = self.decoder(

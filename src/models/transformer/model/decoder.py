@@ -68,6 +68,7 @@ class Decoder(nn.Module):
         sos_id: int = 1,
         eos_id: int = 2,
         max_length: int = 5000,
+        use_embedding: bool = True
     ) -> None:
         super(Decoder, self).__init__()
         self.d_model = d_model
@@ -79,7 +80,12 @@ class Decoder(nn.Module):
         self.sos_id = sos_id
         self.eos_id = eos_id
 
-        self.embedding = TransformerEmbedding(vocab_size, pad_id, input_dim)
+        if not use_embedding:
+            self.embedding = TransformerEmbedding(vocab_size, pad_id, input_dim)
+        else:
+            self.embedding = torch.nn.Identity()
+        
+        self.vocab = None
         self.positional_encoding = PositionalEncoding(input_dim)
         self.input_proj = nn.Linear(input_dim, d_model)
         self.input_norm = nn.LayerNorm(d_model)
@@ -126,6 +132,10 @@ class Decoder(nn.Module):
 
         encoder_attn_mask = get_attn_pad_mask(encoder_outputs, encoder_output_lengths, decoder_inputs.size(1))
 
+        if self.vocab:
+            decoder_inputs = self.vocab.embed(decoder_inputs, decoder_inputs.device)
+            
+        
         outputs = self.embedding(decoder_inputs) + self.positional_encoding(positional_encoding_length)
         outputs = self.input_proj(outputs)
         outputs = self.input_dropout(outputs)

@@ -285,14 +285,14 @@ class Vocab:
         self.export.update(ids)
         return torch.LongTensor(ids), skipped
     
-    def embed(self, ids):
+    def embed(self, ids, target_device):
         # if not embedder:
         #     raise NotImplementError
         if not torch.is_tensor(ids):
             ids = torch.LongTensor(ids.copy()).to(self.device)
         elif ids.device != self.device:
-            ids.to(self.device)
-        return self.embedder(ids)
+            ids = ids.to(self.device)
+        return self.embedder(ids).to(target_device)
     
     def get_used_vocab(self):
         return self.export

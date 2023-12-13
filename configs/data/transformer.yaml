@@ -1,9 +1,9 @@
 _target_: src.data.transformer_datamodule.TransformerDataModule
-data_dir: ${paths.data_dir}/label/
+data_dir: ${paths.data_dir}/label_test/
 input_vocab: ${paths.data_dir}/embedding/laos_glove_v100d
 target_vocab: ${paths.data_dir}/embedding/vi_reduce_remap
 suffix: [clean]
-batch_size: 64
+batch_size: 16
 max_length: 256
 num_workers: 2
 pin_memory: False
