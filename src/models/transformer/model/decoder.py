@@ -58,6 +58,7 @@ class Decoder(nn.Module):
     def __init__(
         self,
         vocab_size: int,
+        input_dim:int,
         d_model: int = 512,
         d_ff: int = 512,
         num_layers: int = 6,
@@ -67,8 +68,10 @@ class Decoder(nn.Module):
         sos_id: int = 1,
         eos_id: int = 2,
         max_length: int = 5000,
+        use_embedding: bool = True
     ) -> None:
         super(Decoder, self).__init__()
+        self.vocab_size = vocab_size
         self.d_model = d_model
         self.num_layers = num_layers
         self.num_heads = num_heads
@@ -78,8 +81,15 @@ class Decoder(nn.Module):
         self.sos_id = sos_id
         self.eos_id = eos_id
 
-        self.embedding = TransformerEmbedding(vocab_size, pad_id, d_model)
-        self.positional_encoding = PositionalEncoding(d_model)
+        if not use_embedding:
+            self.embedding = TransformerEmbedding(vocab_size, pad_id, input_dim)
+        else:
+            self.embedding = torch.nn.Identity()
+        
+        self.vocab = None
+        self.positional_encoding = PositionalEncoding(input_dim)
+        self.input_proj = nn.Linear(input_dim, d_model)
+        self.input_norm = nn.LayerNorm(d_model)
         self.input_dropout = nn.Dropout(p=dropout_p)
         
         self.layers = nn.ModuleList(
@@ -98,6 +108,9 @@ class Decoder(nn.Module):
             nn.LayerNorm(d_model),
             Linear(d_model, vocab_size, zero_bias=False),
         )
+        
+        self.fc_norm = nn.LayerNorm(d_model)
+        self.fc_ff = nn.Conv1d(d_model, vocab_size, 1, bias=True, groups=1)
     
     def count_parameters(self) -> int:
         r"""Count parameters of decoders"""
@@ -123,7 +136,12 @@ class Decoder(nn.Module):
 
         encoder_attn_mask = get_attn_pad_mask(encoder_outputs, encoder_output_lengths, decoder_inputs.size(1))
 
+        if self.vocab:
+            decoder_inputs = self.vocab.embed(decoder_inputs, decoder_inputs.device)
+            
+        
         outputs = self.embedding(decoder_inputs) + self.positional_encoding(positional_encoding_length)
+        outputs = self.input_proj(outputs)
         outputs = self.input_dropout(outputs)
 
         for layer in self.layers:
@@ -173,8 +191,14 @@ class Decoder(nn.Module):
                 encoder_output_lengths=encoder_output_lengths,
                 positional_encoding_length=target_length,
             )
-            step_outputs = self.fc(step_outputs).log_softmax(dim=-1)
-
+            # step_outputs = self.fc(step_outputs).log_softmax(dim=-1)
+            try:
+                    outputs_norm = self.fc_norm(step_outputs).view((-1, self.d_model, 1))
+                    step_output = self.fc_ff(outputs_norm).view((batch_size, -1, self.vocab_size))
+            except:
+                print(outputs.size())
+                raise ValueError("Dimension {} not right ?".format(outputs.size()))
+            
             for di in range(step_outputs.size(1)):
                 step_output = step_outputs[:, di, :]
                 logits.append(step_output)
@@ -195,8 +219,12 @@ class Decoder(nn.Module):
                     encoder_output_lengths=encoder_output_lengths,
                     positional_encoding_length=di,
                 )
-                step_output = self.fc(outputs).log_softmax(dim=-1)
-
+                try:
+                    outputs_norm = self.fc_norm(outputs).view((-1, self.d_model, 1))
+                    step_output = self.fc_ff(outputs_norm).view((batch_size, -1, self.vocab_size))
+                except:
+                    print(outputs.size())
+                    raise ValueError("Dimension {} not right ?".format(outputs.size()))
                 logits.append(step_output[:, -1, :])
                 input_var[:, di] = logits[-1].topk(1)[1].squeeze()
 

@@ -98,11 +98,11 @@ class Vocab:
         self.stride = stride
         self.embedder = None
         self.vocab = dict()
-        self.idx_to_text = None
+        self.idx_to_text = dict()
         self.vocab_size = 0
         self.device = device
         
-        self.export = {0, 1, 2}
+        self.export = {0:10000, 1:10000, 2:10000}
         self.library = dict()
         
         
@@ -127,13 +127,31 @@ class Vocab:
         else:
             self.load_weights(vocab_path, weights_path, device)
         
+        self.idx_to_text = dict(zip(self.vocab.values(), self.vocab.keys()))
+        
         if tokenizer == 'lao':
-            # print(list(self.vocab.keys()) + lao_words())
-            self.idx_to_text = lao_words() + list(self.vocab.keys())
-            self.tokenizer = pythainlp.tokenize.Tokenizer(self.idx_to_text, engine='longest')
+            for word in lao_words():
+                if self.vocab.keys().__contains__(word):
+                    self.export[self.vocab[word]] = 1
+            print(len(self.export))
+            self.tokenizer = pythainlp.tokenize.Tokenizer(lao_words() + list(self.vocab.keys()), engine='longest')
         else:
-            self.idx_to_text = dict(zip(self.vocab.values(), self.vocab.keys()))
+            file = open("/work/hpc/potato/laos_vi/data/embedding/pyvi_dict.txt", "r")
+            for line in file:
+                parts = line.strip().split()
+                words = ('_'.join(parts), ''.join(parts), ' '.join(parts))
+                for word in words:
+                    if self.vocab.keys().__contains__(word) is True:
+                        id = self.vocab[word]
+                        self.idx_to_text[id] = words[0]
+                        self.vocab[words[0]] = id
+                        self.export[id] = 1
+            print(len(self.export))
+            file.close()
+                
             self.tokenizer = pyvi.ViTokenizer.ViTokenizer()
+        
+        
         
     def load_dict(self, vocab_path):
         file = open(vocab_path, "r")
@@ -164,7 +182,7 @@ class Vocab:
             parts = line.strip().split()
             id = int(parts[-1])
             word = " ".join(parts[:-1])
-            if word not in self.vocab:
+            if word not in self.vocab.keys():
                 self.vocab[word] = id
         self.weights = torch.load(weights_path).to(device)
         print("Weight dimension:", self.weights.size())
@@ -172,7 +190,11 @@ class Vocab:
         pass
         
         
-        
+    def view(self, tokens):
+        de_stash = [re.sub(r"_", " ", token) if len(token) > 2 else token for token in tokens ]
+        return " ".join(de_stash)
+    
+    
     def load(self, path, stride):
         file = open(path, "r")
         if file is None:
@@ -272,23 +294,27 @@ class Vocab:
         for token in tokens:
             if token != ' ':
                 try:
-                    ids.append(self.vocab[token])
+                    id = int(self.vocab[token])
+                    ids.append(id)
+                    if self.export.keys().__contains__(id) is False:
+                        self.export[id] = 1
+                    else:
+                        self.export[id] += 1
                 except:
                     ids.append(self.vocab['<pad>'])
+                    self.export[2] += 1
                     skipped.append(token)
 
-        # print(skipped)
-        self.export.update(ids)
         return torch.LongTensor(ids), skipped
     
-    def embed(self, ids):
+    def embed(self, ids, target_device):
         # if not embedder:
         #     raise NotImplementError
         if not torch.is_tensor(ids):
             ids = torch.LongTensor(ids.copy()).to(self.device)
         elif ids.device != self.device:
-            ids.to(self.device)
-        return self.embedder(ids)
+            ids = ids.to(self.device)
+        return self.embedder(ids).to(target_device)
     
     def get_used_vocab(self):
         return self.export
@@ -306,7 +332,11 @@ class Vocab:
     def decode(self, ids):
         return [self.idx_to_text[id] for id in ids]
     
-    
+    def get_topk(self, top_k: int):
+        ids = sorted(list(self.export.items()), key= lambda a: a[1])
+        output_index = sorted(ids[:top_k], key= lambda a: a[0])
+        words = [self.idx_to_text[id] for id, freq in output_index]
+        return np.array(output_index[:][0]), words
 def load_dict(path):
     file = open(path, "r")
     header = file.readline()

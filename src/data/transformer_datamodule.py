@@ -51,8 +51,7 @@ class TransformerDataModule(LightningDataModule):
         batch_size: int = 64,
         max_length: int = 256,
         num_workers: int = 2,
-        pin_memory: bool = False
-    ):
+        pin_memory: bool = False,):
         super().__init__()
 
         # this line allows to access init params with 'self.hparams' attribute
@@ -89,9 +88,10 @@ class TransformerDataModule(LightningDataModule):
                                            init_special_symbol=False,
                                            tokenizer = 'lao')
             
-            self.target_vocab = Vocab(vocab_path=self.hparams.target_vocab + ".txt",
-                                            init_special_symbol=False,
-                                            tokenizer = 'vi')
+            self.target_vocab = Vocab(  vocab_path=self.hparams.target_vocab + ".txt",
+                                        weights_path = self.hparams.target_vocab + ".pt",
+                                        init_special_symbol=False,
+                                        tokenizer = 'vi')
             
 
         if not self.train_dataset and not self.test_dataset and not self.val_dataset:
@@ -114,61 +114,93 @@ class TransformerDataModule(LightningDataModule):
                                              target_vocab = self.target_vocab)
         
         if not self.collator_fn:
-            self.collator_fn = Collator(masked_language_model=False, 
-                                        sos_id=self.target_vocab.vocab['<sos>'],
-                                        eos_id=self.target_vocab.vocab['<eos>'],
-                                        pad_id=self.target_vocab.vocab['<pad>'], 
-                                        target_vocab_size=self.target_vocab.vocab_size,
-                                        max_length=self.max_length)
+            self.collator_fn = Collator(masked_language_model=  False, 
+                                        sos_id= self.target_vocab.vocab['<sos>'],
+                                        eos_id= self.target_vocab.vocab['<eos>'],
+                                        pad_id= self.target_vocab.vocab['<pad>'], 
+                                        target_vocab_size=  self.target_vocab.vocab_size,
+                                        max_length= self.hparams.max_length)
 
-    def train_dataloader(self):
+    def train_dataloader(self)  -> DataLoader[any]:
         return DataLoader(
-            dataset=self.train_dataset,
-            batch_size=self.hparams.batch_size,
+            dataset=    self.train_dataset,
+            batch_size= self.hparams.batch_size,
             num_workers=self.hparams.num_workers,
-            pin_memory=self.hparams.pin_memory,
-            collate_fn=self.collator_fn,
-            shuffle=True,
+            pin_memory= self.hparams.pin_memory,
+            collate_fn= self.collator_fn,
+            shuffle=    False,
+            sampler=    ClusterSampler(self.train_dataset, self.hparams.batch_size, True),
         )
 
-    def val_dataloader(self):
+    def val_dataloader(self)    -> DataLoader[any]:
         return DataLoader(
-            dataset=self.val_dataset,
-            batch_size=self.hparams.batch_size,
+            dataset=    self.val_dataset,
+            batch_size= self.hparams.batch_size,
             num_workers=self.hparams.num_workers,
-            pin_memory=self.hparams.pin_memory,
-            collate_fn=self.collator_fn,
-            shuffle=False,
+            pin_memory= self.hparams.pin_memory,
+            collate_fn= self.collator_fn,
+            shuffle=    False,
+            sampler=    ClusterSampler(self.val_dataset, self.hparams.batch_size, False),
         )
 
-    def test_dataloader(self):
+    def test_dataloader(self)   -> DataLoader[any]:
         return DataLoader(
-            dataset=self.test_dataset,
-            batch_size=self.hparams.batch_size,
+            dataset=    self.test_dataset,
+            batch_size= self.hparams.batch_size,
             num_workers=self.hparams.num_workers,
-            pin_memory=self.hparams.pin_memory,
-            collate_fn=self.collator_fn,
-            shuffle=True,
+            pin_memory= self.hparams.pin_memory,
+            collate_fn= self.collator_fn,
+            shuffle=    False,
+            sampler=    ClusterSampler(self.test_dataset, self.hparams.batch_size, False),
         )
+        
     def get_embedding(self):
         return self.input_vocab.embedder
+    
+    def teardown(self):
+        pass
 
+def export_corpus(path, index, words, dim, stride):
+    f = open(path, "w")
+    f.write(str(len(words)) + "\t" + str(dim) + "\t" + str(stride))
+    for idx, word in enumerate(words):
+        f.write("\n" + word + "\t" + str(int(idx)))
+    f.close()
+    
 @hydra.main(version_base="1.3", config_path="../../configs", config_name="train.yaml")
 def main(cfg: DictConfig) -> Optional[float]:
     datamodule = hydra.utils.instantiate(cfg.data)
-    train_dataloader = datamodule.train_dataloader()
-    batch = next(iter(train_dataloader))
-    inp = batch["inputs"]
-    tgt = batch["targets"]
-    # torch.set_printoptions(threshold=10_000)
-    print(inp.size())
-    print(tgt.size())
-    # input_corpus = np.array(sorted(datamodule.input_vocab.get_used_vocab()))
-    # target_corpus = np.array(sorted(datamodule.target_vocab.get_used_vocab()))
-    # print(np.savetxt("/work/hpc/potato/laos_vi/data/embedding/laos_reduced.txt", 
-    #                  input_corpus))
-    # print(np.savetxt("/work/hpc/potato/laos_vi/data/embedding/vi_reduced.txt", 
-    #                  target_corpus))
+    # train_dataloader = datamodule.train_dataloader()
+    # batch = next(iter(train_dataloader))
+    # inp = batch["inputs"]
+    # tgt = batch["targets"]
+    # # torch.set_printoptions(threshold=10_000)
+    # print(inp.size())
+    # print(tgt.size())
+    # train_dataloader = datamodule.val_dataloader()
+    # batch = next(iter(train_dataloader))
+    # inp = batch["inputs"]
+    # tgt = batch["targets"]
+    # # torch.set_printoptions(threshold=10_000)
+    # print(inp.size())
+    # print(tgt.size())
+    # train_dataloader = datamodule.test_dataloader()
+    # batch = next(iter(train_dataloader))
+    # inp = batch["inputs"]
+    # tgt = batch["targets"]
+    # # torch.set_printoptions(threshold=10_000)
+    # print(inp.size())
+    # print(tgt.size())
+    input_indicies, input_corpus = datamodule.input_vocab.get_topk(15000)
+    target_indicies, target_corpus = datamodule.target_vocab.get_topk(15000)
+    
+    inp_weights = datamodule.input_vocab.embed(input_indicies,"cpu")
+    export_corpus("/work/hpc/potato/laos_vi/data/embedding/laos_15000.txt", input_indicies, input_corpus, 100, 3)
+    torch.save(inp_weights, "/work/hpc/potato/laos_vi/data/embedding/laos_15000.pt")
+    
+    target_weights = datamodule.target_vocab.embed(target_indicies,"cpu")
+    export_corpus("/work/hpc/potato/laos_vi/data/embedding/vi_15000.txt", target_indicies, target_corpus, 100, 3)
+    torch.save(target_weights, "/work/hpc/potato/laos_vi/data/embedding/vi_15000.pt")
     return False
     
 if __name__ == "__main__":

@@ -6,6 +6,7 @@ from omegaconf import DictConfig
 import torch
 from torch import Tensor
 import pytorch_lightning as pl
+from lightning import LightningModule
 
 # COmment this when run train
 import pyrootutils
@@ -19,7 +20,7 @@ from src.models.transformer.modules.utils import get_class_name
 from torchmetrics import MaxMetric, MeanMetric
 from torchmetrics.text import BLEUScore
 
-class TransformerLitModule(pl.LightningModule):
+class TransformerLitModule(LightningModule):
     r"""
     A Transformer model. User is able to modify the attributes as needed.
     The model is based on the paper "Attention Is All You Need".
@@ -47,9 +48,11 @@ class TransformerLitModule(pl.LightningModule):
         scheduler:  torch.optim.lr_scheduler,
         optimizer:   torch.optim.Optimizer,
         compile:    bool, 
+        use_embedding: bool = False,
+        max_length: int = 256
     ) -> None:
-        super(TransformerLitModule, self).__init__()
-        self.save_hyperparameters(logger=False)
+        super().__init__()
+        self.save_hyperparameters(logger=False, ignore=['encoder', 'decoder'])
 
         self.criterion = torch.nn.CrossEntropyLoss(ignore_index=pad_id)
         
@@ -58,7 +61,7 @@ class TransformerLitModule(pl.LightningModule):
         self.eos_id=eos_id
 
         self.input_vocab = None
-        self.vocab = None
+        self.target_vocab = None
         self.encoder = encoder
         self.decoder = decoder
         
@@ -74,15 +77,23 @@ class TransformerLitModule(pl.LightningModule):
 
         # for tracking best so far validation accuracy
         self.val_bleu_best = MaxMetric()
+        # print("Total parameters:", self.encoder.count_parameters())
     
     # must be called before doing anything else    
     def load_vocab(self, input_vocab: Vocab, target_vocab: Vocab):
-        self.input_vocab = input_vocab
-        self.target_vocab = target_vocab
-        self.pad_id = self.target_vocab.vocab['<pad>']
-        self.eos_id = self.target_vocab.vocab['<eos>']
-        self.sos_id = self.target_vocab.vocab['<sos>']
-        self.decoder.embedding = self.target_vocab.embedder
+        self.target_vocab   = target_vocab
+        self.input_vocab    = input_vocab
+        self.pad_id = target_vocab.vocab['<pad>']
+        self.eos_id = target_vocab.vocab['<eos>']
+        self.sos_id = target_vocab.vocab['<sos>']
+        if not self.hparams.use_embedding:
+            self.decoder.embedding = torch.nn.Embedding.from_pretrained(target_vocab.weights,
+                                                                    padding_idx=self.pad_id)
+            self.encoder.embedding = torch.nn.Embedding.from_pretrained(input_vocab.weights,
+                                                                    padding_idx=self.pad_id)
+        else:
+            self.encoder.vocab = input_vocab
+            self.decoder.vocab = target_vocab
     
     def on_train_start(self) -> None:
         """Lightning hook that is called when training begins."""
@@ -109,7 +120,20 @@ class TransformerLitModule(pl.LightningModule):
         targets: Tensor,
         target_lengths: Tensor,
     ) -> OrderedDict:
-        loss = self.criterion(logits, targets[:, 1:])
+        # one_hot_targets = torch.nn.functional.one_hot(targets, num_classes=self.target_vocab.vocab_size).view(torch.float)
+        targets = torch.nn.functional.pad(targets, 
+                                    (0, max(0, min(logits.size(1) + 1, self.hparams.max_length) - targets.size(1)), 0, 0), 
+                                    'constant', 
+                                    value=self.pad_id)
+        # targets = torch.nn.functional.one_hot(targets, num_classes=self.target_vocab.vocab_size)
+
+        try:
+            loss = self.criterion(torch.permute(logits, (0, 2, 1)), targets[:, 1:])
+        except:
+            raise ValueError("Mismatch input {} to output {}".format(logits.size(), targets.size()))
+        # one_hot_targets = torch.nn.functional.one_hot(targets, num_classes=self.target_vocab.vocab_size).view(torch.float)
+        # print(logits.size(), targets.size())
+        # loss = self.criterion(torch.permute(logits, (0, 2, 1)), targets[:, 1:])
         predictions = logits.max(-1)[1]
         
         return OrderedDict(
@@ -135,7 +159,6 @@ class TransformerLitModule(pl.LightningModule):
                 `encoder_logits`, `encoder_output_lengths`.
         """
         logits = None
-        inputs = self.input_vocab.embed(inputs)
         encoder_outputs, encoder_output_lengths = self.encoder(inputs, input_lengths)
 
         if get_class_name(self.decoder) == "BeamSearchDecoder":
@@ -155,6 +178,14 @@ class TransformerLitModule(pl.LightningModule):
             "encoder_output_lengths": encoder_output_lengths,
         }
     
+    # predict and target are in form of index array
+    def compute_bleu(self, metric, predicts, targets):
+        predict_tokens = [self.target_vocab.decode(predict) for predict in predicts.cpu().numpy()]
+        target_tokens  = [self.target_vocab.decode(target) for target in targets.cpu().numpy()]
+        for pre, tar in zip(predict_tokens, target_tokens):
+            metric(pre, tar)
+        metric.compute()
+    
     def training_step(self, batch: tuple) -> OrderedDict:
         r"""
         Forward propagate a `inputs` and `targets` pair for training.
@@ -166,8 +197,7 @@ class TransformerLitModule(pl.LightningModule):
             loss (torch.Tensor): loss for training
         """
         inputs, targets, input_lengths, target_lengths = batch["inputs"], batch["targets"], batch["input_lengths"], batch["target_lengths"]
-
-        inputs = self.input_vocab.embed(inputs)
+        print(target_lengths)
         encoder_outputs, encoder_output_lengths = self.encoder(inputs, input_lengths)
         if get_class_name(self.decoder) == "Decoder":
             logits = self.decoder(
@@ -180,21 +210,23 @@ class TransformerLitModule(pl.LightningModule):
         else:
             raise ValueError("Why is your decoder not a Decoder?")
         
-        loss, predictions, _ =  self.collect_outputs(   stage="train",
-                                                        logits=logits,
-                                                        targets=targets,
-                                                        target_lengths=target_lengths,)
+        output =  self.collect_outputs( stage="train",
+                                        logits=logits,
+                                        targets=targets,
+                                        target_lengths=target_lengths,)
         
-        
+        loss, predictions = output["loss"], output["predictions"]
+        # prediction_transcripts = [self.target_vocab.view(self.target_vocab.decode(prediction)) for prediction in predictions.numpy()]
+        # target_transcripts = [self.target_vocab.view(self.target_vocab.decode(target)) for target in targets.numpy()] 
         self.train_loss(loss)
-        self.train_bleu(predictions, targets)
+        self.compute_bleu(self.train_bleu, predictions, targets)
         self.log("train/loss", self.train_loss, on_step=False, on_epoch=True, prog_bar=True)
         self.log("train/bleu", self.train_bleu, on_step=False, on_epoch=True, prog_bar=True)
         
         return loss
     
     def validation_step(self, batch: tuple, batch_idx: int) -> OrderedDict:
-        r"""
+        """
         Forward propagate a `inputs` and `targets` pair for validation.
 
         Inputs:
@@ -204,9 +236,9 @@ class TransformerLitModule(pl.LightningModule):
         Returns:
             loss (torch.Tensor): loss for training
         """
-        inputs, targets, input_lengths, target_lengths = batch["inputs"], batch["targets"], batch["inputs_length"], batch["targets_length"]
+        inputs, targets, input_lengths, target_lengths = batch["inputs"], batch["targets"], batch["input_lengths"], batch["target_lengths"]
 
-        inputs = self.input_vocab.embed(inputs)
+        # inputs = self.input_vocab.embed(inputs)
         encoder_outputs, encoder_output_lengths = self.encoder(inputs, input_lengths)
         logits = self.decoder(
             encoder_outputs,
@@ -214,14 +246,14 @@ class TransformerLitModule(pl.LightningModule):
             teacher_forcing_ratio=0.0,
         )
         
-        loss, predictions, _ =  self.collect_outputs(stage="val",
+        output =  self.collect_outputs(stage="val",
                                                     logits=logits,
-                                                    encoder_output_lengths=encoder_output_lengths,
                                                     targets=targets,
                                                     target_lengths=target_lengths,)
+        loss, predictions = output["loss"], output["predictions"]
         
+        self.compute_bleu(self.val_bleu, predictions, targets) 
         self.val_loss(loss)
-        self.val_bleu(predictions, targets)
         self.log("val/loss", self.val_loss, on_step=False, on_epoch=True, prog_bar=True)
         self.log("val/bleu", self.val_bleu, on_step=False, on_epoch=True, prog_bar=True)
         return loss
@@ -239,13 +271,13 @@ class TransformerLitModule(pl.LightningModule):
             self.net = torch.compile(self.net)
         
     def on_validation_epoch_end(self) -> None:
-        self.val_bleu.compute()
-        self.val_bleu_best(self.val_bleu)
+        score = self.val_bleu.compute()
+        self.val_bleu_best(score)
         self.log("val/bleu_best", self.val_bleu_best.compute(), sync_dist=True, prog_bar=True)
         return super().on_validation_epoch_end()
     
     def test_step(self, batch: tuple, batch_idx: int) -> OrderedDict:
-        r"""
+        """
         Forward propagate a `inputs` and `targets` pair for test.
 
         Inputs:
@@ -255,22 +287,23 @@ class TransformerLitModule(pl.LightningModule):
         Returns:
             loss (torch.Tensor): loss for training
         """
-        inputs, targets, input_lengths, target_lengths = batch["inputs"], batch["targets"], batch["inputs_length"], batch["targets_length"]
+        inputs, targets, input_lengths, target_lengths = batch["inputs"], batch["targets"], batch["input_lengths"], batch["target_lengths"]
 
-        inputs = self.input_vocab.embed(inputs)
+        # inputs = self.input_vocab.embed(inputs)
         encoder_outputs, encoder_output_lengths = self.encoder(inputs, input_lengths)
         logits = self.decoder(
             encoder_outputs,
             encoder_output_lengths=encoder_output_lengths,
             teacher_forcing_ratio=0.0,
         )
-        loss, predictions, _ = self.collect_outputs(stage="test",
-                                                    logits=logits,
-                                                    encoder_output_lengths=encoder_output_lengths,
-                                                    targets=targets,
-                                                    target_lengths=target_lengths,)
+        output =  self.collect_outputs( stage="test",
+                                        logits=logits,
+                                        targets=targets,
+                                        target_lengths=target_lengths,)
+        loss, predictions = output["loss"], output["predictions"]
+        
+        self.compute_bleu(self.test_bleu, predictions, targets) 
         self.test_loss(loss)
-        self.test_bleu(predictions, targets)
         return loss
 
     def configure_optimizers(self) -> Dict[str, Any]:
@@ -297,7 +330,7 @@ class TransformerLitModule(pl.LightningModule):
         return {"optimizer": optimizer}
     
 from torch.utils.data import ConcatDataset, DataLoader, Dataset, random_split
-from src.data.components.dataset import LaosDataset, Collator
+from src.data.components.dataset import LaosDataset, Collator, ClusterSampler
 import hydra
 import omegaconf
 from omegaconf import DictConfig
@@ -329,19 +362,20 @@ def main(cfg: DictConfig) -> Optional[float]:
 
     dataloader = DataLoader(dataset=dataset,
                             batch_size=16,
-                            num_workers=2,
+                            num_workers=1,
                             pin_memory=False,
                             collate_fn=collator_fn,
-                            shuffle=True,)
+                            shuffle=False,
+                            sampler=ClusterSampler(dataset, batch_size=16, shuffle=True))
     
     batch = next(iter(dataloader))
     cfg.model.encoder.vocab_size = lao_vocab.vocab_size
     cfg.model.decoder.vocab_size = vi_vocab.vocab_size
     model = hydra.utils.instantiate(cfg.model)
     model.load_vocab(lao_vocab, vi_vocab)
-    loss = model.training_step(batch)
+    loss= model.training_step(batch)
     print(loss)
-
+    # print("\n".join(["\t".join([m, n]) for m, n in zip(y1, y)]))
 if __name__ == "__main__":
     main()
     
