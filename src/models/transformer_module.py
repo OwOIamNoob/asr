@@ -49,6 +49,7 @@ class TransformerLitModule(LightningModule):
         optimizer:   torch.optim.Optimizer,
         compile:    bool, 
         use_embedding: bool = False,
+        max_length: int = 256
     ) -> None:
         super().__init__()
         self.save_hyperparameters(logger=False, ignore=['encoder', 'decoder'])
@@ -120,11 +121,19 @@ class TransformerLitModule(LightningModule):
         target_lengths: Tensor,
     ) -> OrderedDict:
         # one_hot_targets = torch.nn.functional.one_hot(targets, num_classes=self.target_vocab.vocab_size).view(torch.float)
-        print(logits.size(), targets.size())
-        loss = self.criterion(torch.permute(logits, (0, 2, 1)), targets[:, 1:])
+        targets = torch.nn.functional.pad(targets, 
+                                    (0, max(0, min(logits.size(1) + 1, self.hparams.max_length) - targets.size(1)), 0, 0), 
+                                    'constant', 
+                                    value=self.pad_id)
+        # targets = torch.nn.functional.one_hot(targets, num_classes=self.target_vocab.vocab_size)
+
+        try:
+            loss = self.criterion(torch.permute(logits, (0, 2, 1)), targets[:, 1:])
+        except:
+            raise ValueError("Mismatch input {} to output {}".format(logits.size(), targets.size()))
         # one_hot_targets = torch.nn.functional.one_hot(targets, num_classes=self.target_vocab.vocab_size).view(torch.float)
-        print(logits.size(), targets.size())
-        loss = self.criterion(torch.permute(logits, (0, 2, 1)), targets[:, 1:])
+        # print(logits.size(), targets.size())
+        # loss = self.criterion(torch.permute(logits, (0, 2, 1)), targets[:, 1:])
         predictions = logits.max(-1)[1]
         
         return OrderedDict(
@@ -171,8 +180,8 @@ class TransformerLitModule(LightningModule):
     
     # predict and target are in form of index array
     def compute_bleu(self, metric, predicts, targets):
-        predict_tokens = [self.target_vocab.decode(predict) for predict in predicts.numpy()]
-        target_tokens  = [self.target_vocab.decode(target) for target in targets.numpy()]
+        predict_tokens = [self.target_vocab.decode(predict) for predict in predicts.cpu().numpy()]
+        target_tokens  = [self.target_vocab.decode(target) for target in targets.cpu().numpy()]
         for pre, tar in zip(predict_tokens, target_tokens):
             metric(pre, tar)
         metric.compute()
@@ -239,7 +248,6 @@ class TransformerLitModule(LightningModule):
         
         output =  self.collect_outputs(stage="val",
                                                     logits=logits,
-                                                    encoder_output_lengths=encoder_output_lengths,
                                                     targets=targets,
                                                     target_lengths=target_lengths,)
         loss, predictions = output["loss"], output["predictions"]
@@ -263,8 +271,8 @@ class TransformerLitModule(LightningModule):
             self.net = torch.compile(self.net)
         
     def on_validation_epoch_end(self) -> None:
-        self.val_bleu.compute()
-        self.val_bleu_best(self.val_bleu)
+        score = self.val_bleu.compute()
+        self.val_bleu_best(score)
         self.log("val/bleu_best", self.val_bleu_best.compute(), sync_dist=True, prog_bar=True)
         return super().on_validation_epoch_end()
     
@@ -290,7 +298,6 @@ class TransformerLitModule(LightningModule):
         )
         output =  self.collect_outputs( stage="test",
                                         logits=logits,
-                                        encoder_output_lengths=encoder_output_lengths,
                                         targets=targets,
                                         target_lengths=target_lengths,)
         loss, predictions = output["loss"], output["predictions"]

@@ -15,21 +15,22 @@ scheduler:
 
 encoder:
   _target_: src.models.transformer.model.encoder.Encoder  
-  vocab_size: 784
+  vocab_size: 10000
   input_dim: 100
-  d_ff: 1024
-  d_model: 512
+  d_ff: 256
+  d_model: 128
   num_heads: 4
   num_layers: 4
   dropout_p: 0.1
   pad_id: 2
+  use_embedding: False
 
 decoder:
   _target_: src.models.transformer.model.decoder.Decoder
-  vocab_size: 784
+  vocab_size: 10000
   input_dim: 100
-  d_ff: 1024
-  d_model: 512
+  d_ff: 256
+  d_model: 128
   num_heads: 4
   num_layers: 4
   dropout_p: 0.1
@@ -37,6 +38,7 @@ decoder:
   pad_id: 2
   sos_id: 0
   eos_id: 1
+  use_embedding: False
 
 # compile model for faster training with pytorch 2.0
 compile: false
@@ -44,6 +46,7 @@ compile: false
 pad_id: 2
 sos_id: 0
 eos_id: 1
+max_length: 256
 
 teacher_forcing_ratio: 0.6
-use_embedding: True
+use_embedding: False

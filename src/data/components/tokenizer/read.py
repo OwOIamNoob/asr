@@ -14,7 +14,7 @@ import math
 
 # print(len(pyvi_vocab))
 # print(pyvi_vocab)
-laos_vocab = ['<sos>', "<eos>", "<pad>"] + lao_words() 
+laos_vocab = ['<sos>', "<eos>", "<pad>"]
 dataset_idx = sorted(np.loadtxt("/work/hpc/potato/laos_vi/data/embedding/laos_reduced.txt").astype(int).tolist())
 # indexes = set(idx)
 vocab = Vocab(vocab_path="/work/hpc/potato/laos_vi/data/embedding/laos_glove_v100d.txt",
@@ -43,7 +43,7 @@ print("Total size:", len(output_vocab))
 # if len(unk) > 0:
 #     print(unk)
 #     raise ValueError("Unexpected token")
-output = open("/work/hpc/potato/laos_vi/data/embedding/laos_reduce_remap.txt", "w")
+output = open("/work/hpc/potato/laos_vi/data/embedding/laos_reduce_remap_no_add.txt", "w")
 prev_idx = -1
 indexes = []
 for index, word in sorted(zip(output_vocab.keys(), output_vocab.values()), key=lambda a: a[0]):
@@ -55,7 +55,7 @@ for index, word in sorted(zip(output_vocab.keys(), output_vocab.values()), key=l
 
 indexes = torch.LongTensor(indexes)
 embed = vocab.embed(indexes, "cpu")
-torch.save(embed, "/work/hpc/potato/laos_vi/data/embedding/laos_reduce_remap.pt")
+torch.save(embed, "/work/hpc/potato/laos_vi/data/embedding/laos_reduce_remap_no_add.pt")
 output.close()
 # file.close()
      

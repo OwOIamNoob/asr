@@ -71,6 +71,7 @@ class Decoder(nn.Module):
         use_embedding: bool = True
     ) -> None:
         super(Decoder, self).__init__()
+        self.vocab_size = vocab_size
         self.d_model = d_model
         self.num_layers = num_layers
         self.num_heads = num_heads
@@ -107,6 +108,9 @@ class Decoder(nn.Module):
             nn.LayerNorm(d_model),
             Linear(d_model, vocab_size, zero_bias=False),
         )
+        
+        self.fc_norm = nn.LayerNorm(d_model)
+        self.fc_ff = nn.Conv1d(d_model, vocab_size, 1, bias=True, groups=1)
     
     def count_parameters(self) -> int:
         r"""Count parameters of decoders"""
@@ -187,8 +191,14 @@ class Decoder(nn.Module):
                 encoder_output_lengths=encoder_output_lengths,
                 positional_encoding_length=target_length,
             )
-            step_outputs = self.fc(step_outputs).log_softmax(dim=-1)
-
+            # step_outputs = self.fc(step_outputs).log_softmax(dim=-1)
+            try:
+                    outputs_norm = self.fc_norm(step_outputs).view((-1, self.d_model, 1))
+                    step_output = self.fc_ff(outputs_norm).view((batch_size, -1, self.vocab_size))
+            except:
+                print(outputs.size())
+                raise ValueError("Dimension {} not right ?".format(outputs.size()))
+            
             for di in range(step_outputs.size(1)):
                 step_output = step_outputs[:, di, :]
                 logits.append(step_output)
@@ -209,8 +219,12 @@ class Decoder(nn.Module):
                     encoder_output_lengths=encoder_output_lengths,
                     positional_encoding_length=di,
                 )
-                step_output = self.fc(outputs).log_softmax(dim=-1)
-
+                try:
+                    outputs_norm = self.fc_norm(outputs).view((-1, self.d_model, 1))
+                    step_output = self.fc_ff(outputs_norm).view((batch_size, -1, self.vocab_size))
+                except:
+                    print(outputs.size())
+                    raise ValueError("Dimension {} not right ?".format(outputs.size()))
                 logits.append(step_output[:, -1, :])
                 input_var[:, di] = logits[-1].topk(1)[1].squeeze()
 

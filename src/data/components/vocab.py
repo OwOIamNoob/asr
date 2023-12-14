@@ -102,7 +102,7 @@ class Vocab:
         self.vocab_size = 0
         self.device = device
         
-        self.export = {0, 1, 2}
+        self.export = {0:10000, 1:10000, 2:10000}
         self.library = dict()
         
         
@@ -127,13 +127,31 @@ class Vocab:
         else:
             self.load_weights(vocab_path, weights_path, device)
         
+        self.idx_to_text = dict(zip(self.vocab.values(), self.vocab.keys()))
+        
         if tokenizer == 'lao':
-            # print(list(self.vocab.keys()) + lao_words())
+            for word in lao_words():
+                if self.vocab.keys().__contains__(word):
+                    self.export[self.vocab[word]] = 1
+            print(len(self.export))
             self.tokenizer = pythainlp.tokenize.Tokenizer(lao_words() + list(self.vocab.keys()), engine='longest')
         else:
+            file = open("/work/hpc/potato/laos_vi/data/embedding/pyvi_dict.txt", "r")
+            for line in file:
+                parts = line.strip().split()
+                words = ('_'.join(parts), ''.join(parts), ' '.join(parts))
+                for word in words:
+                    if self.vocab.keys().__contains__(word) is True:
+                        id = self.vocab[word]
+                        self.idx_to_text[id] = words[0]
+                        self.vocab[words[0]] = id
+                        self.export[id] = 1
+            print(len(self.export))
+            file.close()
+                
             self.tokenizer = pyvi.ViTokenizer.ViTokenizer()
         
-        self.idx_to_text = dict(zip(self.vocab.values(), self.vocab.keys()))
+        
         
     def load_dict(self, vocab_path):
         file = open(vocab_path, "r")
@@ -161,7 +179,7 @@ class Vocab:
         self.stride = int(stride)
         print("Loading {} words with {} features with {} addition keys".format(self.vocab_size, self.dim, self.stride)) 
         for line in file:
-            parts = line.strip().split("\t")
+            parts = line.strip().split()
             id = int(parts[-1])
             word = " ".join(parts[:-1])
             if word not in self.vocab.keys():
@@ -276,13 +294,17 @@ class Vocab:
         for token in tokens:
             if token != ' ':
                 try:
-                    ids.append(self.vocab[token])
+                    id = int(self.vocab[token])
+                    ids.append(id)
+                    if self.export.keys().__contains__(id) is False:
+                        self.export[id] = 1
+                    else:
+                        self.export[id] += 1
                 except:
                     ids.append(self.vocab['<pad>'])
+                    self.export[2] += 1
                     skipped.append(token)
 
-        # print(skipped)
-        self.export.update(ids)
         return torch.LongTensor(ids), skipped
     
     def embed(self, ids, target_device):
@@ -310,7 +332,11 @@ class Vocab:
     def decode(self, ids):
         return [self.idx_to_text[id] for id in ids]
     
-    
+    def get_topk(self, top_k: int):
+        ids = sorted(list(self.export.items()), key= lambda a: a[1])
+        output_index = sorted(ids[:top_k], key= lambda a: a[0])
+        words = [self.idx_to_text[id] for id, freq in output_index]
+        return np.array(output_index[:][0]), words
 def load_dict(path):
     file = open(path, "r")
     header = file.readline()
