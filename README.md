@@ -25,7 +25,9 @@ _Suggestions are always welcome!_
 <br>
 
 ## 📌  Introduction
-
+This is an adaptation of Laos_Viet Machine Translation Project to Pytorch Lightning Hydra, progress is still being made.
+To run training, simply run train.py file in src folder, all configuration is customized in configs folder. 
+The process is still faulty, on progress of resolving to seamless training
 **Why you might want to use it:**
 
 ✅ Save on boilerplate <br>
