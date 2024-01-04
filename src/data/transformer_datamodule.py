@@ -13,7 +13,6 @@ import pyrootutils
 pyrootutils.setup_root(search_from=__file__, 
                        indicator="pyproject.toml",
                        pythonpath=True)
-
 #functional imports
 from laonlp.tokenize import word_tokenize
 import pyvi
@@ -169,15 +168,15 @@ def export_corpus(path, index, words, dim, stride):
     
 @hydra.main(version_base="1.3", config_path="../../configs", config_name="train.yaml")
 def main(cfg: DictConfig) -> Optional[float]:
-    datamodule = hydra.utils.instantiate(cfg.data)
-    # datamodule = TransformerDataModule(data_dir=cfg.data.data_dir, 
-    #                                    input_vocab=cfg.data.input_vocab,
-    #                                    target_vocab=cfg.data.target_vocab,
-    #                                    suffix=cfg.data.suffix,
-    #                                    batch_size=4,
-    #                                    max_length=256,
-    #                                    num_workers=2,
-    #                                    pin_memory=False)
+    # datamodule = hydra.utils.instantiate(cfg.data)
+    datamodule = TransformerDataModule(data_dir=cfg.data.data_dir, 
+                                       input_vocab=cfg.data.input_vocab,
+                                       target_vocab=cfg.data.target_vocab,
+                                       suffix=cfg.data.suffix,
+                                       batch_size=4,
+                                       max_length=256,
+                                       num_workers=2,
+                                       pin_memory=False)
     train_dataloader = datamodule.train_dataloader()
     batch = next(iter(train_dataloader))
     inp = batch["inputs"]

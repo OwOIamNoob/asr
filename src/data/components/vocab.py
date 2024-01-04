@@ -4,6 +4,7 @@ from torch.nn import Embedding
 import pyvi.ViTokenizer
 import re
 import time
+import os
 #### tokenizer
 import pythainlp
 from laonlp.corpus import lao_words
@@ -87,9 +88,9 @@ def replace_all(text, dict_map):
 ############################## vocab ###############################
 class Vocab:
     def __init__(self,
-                 ckpt_path:str = None,
-                 vocab_path:str = None,
-                 weights_path:str = None,
+                 ckpt_path:str = "",
+                 vocab_path:str = "",
+                 weights_path:str = "",
                  stride: int = 0,
                  init_special_symbol: bool = True,
                  tokenizer:str = "vi",
@@ -106,9 +107,9 @@ class Vocab:
         self.library = dict()
         
         
-        if not ckpt_path and not vocab_path and not weights_path:
+        if not os.path.isfile(ckpt_path) and not os.path.isfile(vocab_path) and not os.path.isfile(weights_path):
             raise AssertionError("What the heck do u want me to do ?")
-        if not vocab_path and weights_path: 
+        if not os.path.isfile(vocab_path) and not os.path.isfile(weights_path): 
             self.stride = 3
             self.weights = [0, 0, 0]
             self.load(ckpt_path, self.stride)
@@ -122,7 +123,7 @@ class Vocab:
                 self.weights = np.vstack(self.weights)
             self.weights = torch.from_numpy(self.weights.astype(np.float32))
             self.embedder = Embedding.from_pretrained(self.weights, freeze=False, padding_idx=0)
-        elif not weights_path:
+        elif not os.path.isfile(weights_path):
             self.load_dict(vocab_path)
         else:
             self.load_weights(vocab_path, weights_path, device)
