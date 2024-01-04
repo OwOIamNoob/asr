@@ -114,7 +114,7 @@ class Collator:
             
         # tgt = torch.stack(targets)
         # inp = torch.stack(inputs)
-        return {"targets":  torch.stack(targets),
+        return {"targets":  torch.stack(targets).type(torch.int64),
                 "inputs": torch.stack(inputs).type(torch.int64),
                 "input_lengths": torch.LongTensor(input_lengths),
                 "target_lengths": torch.LongTensor(target_lengths)}

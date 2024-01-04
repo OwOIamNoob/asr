@@ -54,7 +54,7 @@ class TransformerLitModule(LightningModule):
         super().__init__()
         self.save_hyperparameters(logger=False, ignore=['encoder', 'decoder'])
 
-        self.criterion = torch.nn.CrossEntropyLoss(ignore_index=pad_id)
+        self.criterion = torch.nn.NLLLoss(ignore_index=pad_id)
         
         self.pad_id=pad_id
         self.sos_id=sos_id
@@ -127,10 +127,10 @@ class TransformerLitModule(LightningModule):
         #                             value=self.pad_id)
         # targets = torch.nn.functional.one_hot(targets, num_classes=self.target_vocab.vocab_size)
 
-        try:
-            loss = self.criterion(torch.permute(logits, (0, 2, 1)), targets)
-        except:
-            raise ValueError("Mismatch input {} to output {}".format(logits.size(), targets.size()))
+        
+        loss = self.criterion(torch.permute(logits, (0, 2, 1)), targets)
+        # except:
+        #     raise ValueError("Mismatch input {} to output {}".format(logits.size(), targets.size()))
         # one_hot_targets = torch.nn.functional.one_hot(targets, num_classes=self.target_vocab.vocab_size).view(torch.float)
         # print(logits.size(), targets.size())
         # loss = self.criterion(torch.permute(logits, (0, 2, 1)), targets[:, 1:])
@@ -145,6 +145,7 @@ class TransformerLitModule(LightningModule):
             }
         )
 
+    
     def forward(self, inputs: Tensor, input_lengths: Tensor) -> Dict[str, Tensor]: 
         r"""
         Forward propagate a `inputs` and `targets` pair for inference.
@@ -185,7 +186,8 @@ class TransformerLitModule(LightningModule):
         for pre, tar in zip(predict_tokens, target_tokens):
             metric(pre, tar)
         metric.compute()
-    
+        
+
     def training_step(self, batch: tuple) -> OrderedDict:
         r"""
         Forward propagate a `inputs` and `targets` pair for training.
@@ -205,11 +207,12 @@ class TransformerLitModule(LightningModule):
                 targets=targets,
                 encoder_output_lengths=encoder_output_lengths,
                 target_lengths=target_lengths,
-                teacher_forcing_ratio=self.hparams.teacher_forcing_ratio,
+                teacher_forcing_ratio=0.0,
             )
         else:
             raise ValueError("Why is your decoder not a Decoder?")
         
+        print(logits.size())
         output =  self.collect_outputs( stage="train",
                                         logits=logits,
                                         targets=targets,
@@ -343,12 +346,14 @@ def main(cfg: DictConfig) -> Optional[float]:
     batch = next(iter(dataloader))
     cfg.model.encoder.vocab_size = datamodule.input_vocab.vocab_size
     cfg.model.decoder.vocab_size = datamodule.target_vocab.vocab_size
-    print(cfg.model.encoder.vocab_size)
-    print(cfg.model.decoder.vocab_size)
+    # print(cfg.model.encoder.vocab_size)
+    # print(cfg.model.decoder.vocab_size)
     model = hydra.utils.instantiate(cfg.model)
     # model.load_vocab(lao_vocab, vi_vocab)
+    # print(batch['targets'])
     loss= model.training_step(batch)
     print(loss)
+    loss.back()
     # print("\n".join(["\t".join([m, n]) for m, n in zip(y1, y)]))
 if __name__ == "__main__":
     main()

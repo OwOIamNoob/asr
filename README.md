@@ -26,7 +26,7 @@ _Suggestions are always welcome!_
 
 ## 📌  Introduction
 This is an adaptation of Laos_Viet Machine Translation Project to Pytorch Lightning Hydra, progress is still being made.
-To run training, simply run train.py file in src folder, all configuration is customized in configs folder. 
+To run training, simply run train.py file in src folder, all configuration is customized in configs folder, the main process is just calling other process, the sub_process is defined in the configs and instantiated by hydra utilization. 
 The process is still faulty, on progress of resolving to seamless training
 A pre-configured vocab is a must, import our vocab or enumerate your own vocab for convenience, each vocab's header should consist 3 components: no. of words, embedding dimension and number of special keywords. Embedding can also be read with vocab and is stored  inside Vocab class.You can just simply run download.sh to import the vocab :D 
 **Why you might want to use it:**
