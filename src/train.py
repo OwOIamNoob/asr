@@ -56,9 +56,9 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
 
     log.info(f"Instantiating datamodule <{cfg.data._target_}>")
     datamodule: LightningDataModule = hydra.utils.instantiate(cfg.data)
-
     cfg.model.encoder.vocab_size = datamodule.input_vocab.vocab_size
     cfg.model.decoder.vocab_size = datamodule.target_vocab.vocab_size
+    print(cfg.model.encoder.vocab_size, cfg.model.decoder.vocab_size)
     log.info(f"Instantiating model <{cfg.model._target_}>")
     model: LightningModule = hydra.utils.instantiate(cfg.model)
     
@@ -71,8 +71,8 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     log.info(f"Instantiating trainer <{cfg.trainer._target_}>")
     trainer: Trainer = hydra.utils.instantiate(cfg.trainer, callbacks=callbacks, logger=logger)
     datamodule.target_vocab.to(model.device)
-    if cfg.model.use_embedding is True:
-        model.load_vocab(datamodule.input_vocab, datamodule.target_vocab)
+    
+    model.load_vocab(datamodule.input_vocab, datamodule.target_vocab)
     object_dict = {
         "cfg": cfg,
         "datamodule": datamodule,

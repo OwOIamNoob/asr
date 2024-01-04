@@ -83,17 +83,17 @@ class TransformerLitModule(LightningModule):
     def load_vocab(self, input_vocab: Vocab, target_vocab: Vocab):
         self.target_vocab   = target_vocab
         self.input_vocab    = input_vocab
-        self.pad_id = target_vocab.vocab['<pad>']
-        self.eos_id = target_vocab.vocab['<eos>']
-        self.sos_id = target_vocab.vocab['<sos>']
+        # self.pad_id = target_vocab.vocab['<pad>']
+        # self.eos_id = target_vocab.vocab['<eos>']
+        # self.sos_id = target_vocab.vocab['<sos>']
         if not self.hparams.use_embedding:
-            self.decoder.embedding = torch.nn.Embedding.from_pretrained(target_vocab.weights,
-                                                                    padding_idx=self.pad_id)
-            self.encoder.embedding = torch.nn.Embedding.from_pretrained(input_vocab.weights,
-                                                                    padding_idx=self.pad_id)
+            # self.decoder.embedding = torch.nn.Embedding.from_pretrained(target_vocab.weights,
+            #                                                         padding_idx=self.pad_id)
+            # self.encoder.embedding = torch.nn.Embedding.from_pretrained(input_vocab.weights,
+            #                                                         padding_idx=self.pad_id + 1)
+            pass
         else:
-            self.encoder.vocab = input_vocab
-            self.decoder.vocab = target_vocab
+            pass
     
     def on_train_start(self) -> None:
         """Lightning hook that is called when training begins."""
@@ -121,14 +121,14 @@ class TransformerLitModule(LightningModule):
         target_lengths: Tensor,
     ) -> OrderedDict:
         # one_hot_targets = torch.nn.functional.one_hot(targets, num_classes=self.target_vocab.vocab_size).view(torch.float)
-        targets = torch.nn.functional.pad(targets, 
-                                    (0, max(0, min(logits.size(1) + 1, self.hparams.max_length) - targets.size(1)), 0, 0), 
-                                    'constant', 
-                                    value=self.pad_id)
+        # targets = torch.nn.functional.pad(targets, 
+        #                             (0, max(0, min(logits.size(1) + 1, self.hparams.max_length) - targets.size(1)), 0, 0), 
+        #                             'constant', 
+        #                             value=self.pad_id)
         # targets = torch.nn.functional.one_hot(targets, num_classes=self.target_vocab.vocab_size)
 
         try:
-            loss = self.criterion(torch.permute(logits, (0, 2, 1)), targets[:, 1:])
+            loss = self.criterion(torch.permute(logits, (0, 2, 1)), targets)
         except:
             raise ValueError("Mismatch input {} to output {}".format(logits.size(), targets.size()))
         # one_hot_targets = torch.nn.functional.one_hot(targets, num_classes=self.target_vocab.vocab_size).view(torch.float)
@@ -197,7 +197,7 @@ class TransformerLitModule(LightningModule):
             loss (torch.Tensor): loss for training
         """
         inputs, targets, input_lengths, target_lengths = batch["inputs"], batch["targets"], batch["input_lengths"], batch["target_lengths"]
-        print(target_lengths)
+        # print(target_lengths)
         encoder_outputs, encoder_output_lengths = self.encoder(inputs, input_lengths)
         if get_class_name(self.decoder) == "Decoder":
             logits = self.decoder(
@@ -338,41 +338,15 @@ from typing import Optional
 
 @hydra.main(version_base="1.3", config_path="../../configs", config_name="train.yaml")
 def main(cfg: DictConfig) -> Optional[float]:
-    lao_vocab = Vocab(  vocab_path="/work/hpc/potato/laos_vi/data/embedding/laos_glove_v100d.txt",
-                        weights_path="/work/hpc/potato/laos_vi/data/embedding/laos_glove_v100d.pt",
-                        stride=0,
-                        tokenizer='lao',
-                        init_special_symbol=False)
-    vi_vocab = Vocab(   vocab_path="/work/hpc/potato/laos_vi/data/embedding/vi_reduce_remap.txt",
-                        weights_path="/work/hpc/potato/laos_vi/data/embedding/vi_reduce_remap.pt",
-                        stride=0,
-                        tokenizer='vi',
-                        init_special_symbol=False)
-    dataset = LaosDataset(  data_dir="/work/hpc/potato/laos_vi/data/label/",
-                            file_type="dev",
-                            suffix=["clean"],
-                            input_vocab=lao_vocab,
-                            target_vocab=vi_vocab)
-    collator_fn = Collator( masked_language_model=False, 
-                            sos_id=vi_vocab.vocab['<sos>'],
-                            eos_id=vi_vocab.vocab['<eos>'],
-                            pad_id=vi_vocab.vocab['<pad>'], 
-                            target_vocab_size=vi_vocab.vocab_size,
-                            max_length=256)
-
-    dataloader = DataLoader(dataset=dataset,
-                            batch_size=16,
-                            num_workers=1,
-                            pin_memory=False,
-                            collate_fn=collator_fn,
-                            shuffle=False,
-                            sampler=ClusterSampler(dataset, batch_size=16, shuffle=True))
-    
+    datamodule = hydra.utils.instantiate(cfg.data)
+    dataloader = datamodule.train_dataloader()
     batch = next(iter(dataloader))
-    cfg.model.encoder.vocab_size = lao_vocab.vocab_size
-    cfg.model.decoder.vocab_size = vi_vocab.vocab_size
+    cfg.model.encoder.vocab_size = datamodule.input_vocab.vocab_size
+    cfg.model.decoder.vocab_size = datamodule.target_vocab.vocab_size
+    print(cfg.model.encoder.vocab_size)
+    print(cfg.model.decoder.vocab_size)
     model = hydra.utils.instantiate(cfg.model)
-    model.load_vocab(lao_vocab, vi_vocab)
+    # model.load_vocab(lao_vocab, vi_vocab)
     loss= model.training_step(batch)
     print(loss)
     # print("\n".join(["\t".join([m, n]) for m, n in zip(y1, y)]))

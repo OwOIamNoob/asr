@@ -1,9 +1,9 @@
 _target_: src.data.transformer_datamodule.TransformerDataModule
 data_dir: ${paths.data_dir}/label/
-input_vocab: ${paths.data_dir}/embedding/laos_glove_v100d
-target_vocab: ${paths.data_dir}/embedding/vi_dict
-suffix: [clean, other]
-batch_size: 4
+input_vocab: ${paths.data_dir}/embedding/hugging/lo_vocab_v100d
+target_vocab: ${paths.data_dir}/embedding/hugging/vi_vocab_v100d
+suffix: [clean]
+batch_size: 1
 max_length: 256
 num_workers: 2
 pin_memory: False

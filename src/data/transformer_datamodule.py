@@ -96,7 +96,7 @@ class TransformerDataModule(LightningDataModule):
 
         if not self.train_dataset and not self.test_dataset and not self.val_dataset:
             self.train_dataset = LaosDataset(data_dir = self.hparams.data_dir,
-                                             file_type = "train",
+                                             file_type = "dev",
                                              suffix = self.hparams.suffix,
                                              input_vocab = self.input_vocab,
                                              target_vocab = self.target_vocab)
@@ -170,13 +170,21 @@ def export_corpus(path, index, words, dim, stride):
 @hydra.main(version_base="1.3", config_path="../../configs", config_name="train.yaml")
 def main(cfg: DictConfig) -> Optional[float]:
     datamodule = hydra.utils.instantiate(cfg.data)
-    # train_dataloader = datamodule.train_dataloader()
-    # batch = next(iter(train_dataloader))
-    # inp = batch["inputs"]
-    # tgt = batch["targets"]
+    # datamodule = TransformerDataModule(data_dir=cfg.data.data_dir, 
+    #                                    input_vocab=cfg.data.input_vocab,
+    #                                    target_vocab=cfg.data.target_vocab,
+    #                                    suffix=cfg.data.suffix,
+    #                                    batch_size=4,
+    #                                    max_length=256,
+    #                                    num_workers=2,
+    #                                    pin_memory=False)
+    train_dataloader = datamodule.train_dataloader()
+    batch = next(iter(train_dataloader))
+    inp = batch["inputs"]
+    tgt = batch["targets"]
     # # torch.set_printoptions(threshold=10_000)
-    # print(inp.size())
-    # print(tgt.size())
+    print(inp.size())
+    print(tgt.size())
     # train_dataloader = datamodule.val_dataloader()
     # batch = next(iter(train_dataloader))
     # inp = batch["inputs"]
@@ -191,16 +199,16 @@ def main(cfg: DictConfig) -> Optional[float]:
     # # torch.set_printoptions(threshold=10_000)
     # print(inp.size())
     # print(tgt.size())
-    input_indicies, input_corpus = datamodule.input_vocab.get_topk(15000)
-    target_indicies, target_corpus = datamodule.target_vocab.get_topk(15000)
+    # input_indicies, input_corpus = datamodule.input_vocab.get_topk(30000)
+    # target_indicies, target_corpus = datamodule.target_vocab.get_topk(10000)
     
-    inp_weights = datamodule.input_vocab.embed(input_indicies,"cpu")
-    export_corpus("/work/hpc/potato/laos_vi/data/embedding/laos_15000.txt", input_indicies, input_corpus, 100, 3)
-    torch.save(inp_weights, "/work/hpc/potato/laos_vi/data/embedding/laos_15000.pt")
+    # inp_weights = datamodule.input_vocab.embed(input_indicies[:, 0],"cpu")
+    # export_corpus("/work/hpc/potato/laos_vi/data/embedding/laos_15000.txt", input_indicies[:, 0], input_corpus, 100, 3)
+    # torch.save(inp_weights, "/work/hpc/potato/laos_vi/data/embedding/laos_15000.pt")
     
-    target_weights = datamodule.target_vocab.embed(target_indicies,"cpu")
-    export_corpus("/work/hpc/potato/laos_vi/data/embedding/vi_15000.txt", target_indicies, target_corpus, 100, 3)
-    torch.save(target_weights, "/work/hpc/potato/laos_vi/data/embedding/vi_15000.pt")
+    # target_weights = datamodule.target_vocab.embed(target_indicies[:, 0],"cpu")
+    # export_corpus("/work/hpc/potato/laos_vi/data/embedding/vi_15000.txt", target_indicies[:, 0], target_corpus, 100, 3)
+    # torch.save(target_weights, "/work/hpc/potato/laos_vi/data/embedding/vi_15000.pt")
     return False
     
 if __name__ == "__main__":

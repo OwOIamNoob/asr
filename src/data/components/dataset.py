@@ -61,7 +61,7 @@ class LaosDataset(Dataset):
         return self.data[index]
 
 class Collator:
-    def __init__(self, masked_language_model=False, sos_id=0, eos_id=1, pad_id=2, target_vocab_size=1, max_length=256):
+    def __init__(self, masked_language_model=False, sos_id=0, eos_id=1, pad_id=[2], target_vocab_size=1, max_length=256):
         self.masked_language_model = masked_language_model
         self.sos_id = sos_id
         self.eos_id = eos_id
@@ -77,43 +77,35 @@ class Collator:
         max_label_len = max(sample["target"].size(0) for sample in batch)
         max_input_len = max(sample["input"].size(0) for sample in batch)
         
-        if max_label_len > self.max_length or max_input_len > self.max_length:
+        if max_label_len > self.max_length or max_input_len > self.max_length - 2:
             raise ValueError("String too big gawk gawk")
         
         target_len = max(max_label_len, max_input_len)
 
         for sample in batch:
             # padding and append
-            inp_length = sample['input'].size(0)
-            inp = pad(sample['input'], 
-                         (1, 0), 
-                         'constant',
-                         value=self.sos_id)
-            inp = pad(inp,
+            inp = pad(sample['input'],
                       (0, 1),
                       'constant',
                       value=self.eos_id)
+            inp_length = inp.size(0)
+            
             input_lengths.append(inp.size(0))
             inp = pad(inp, 
-                         (0, target_len - inp_length), 
+                         (0, self.max_length - inp_length), 
                          'constant',
                          value=self.pad_id)
             
             inputs.append(inp)            
             
-            
-            tgt_length = sample['target'].size(0)
-            tgt = pad(sample['target'],
-                        (1, 0),
-                        'constant',
-                        value=self.sos_id)
-            tgt = pad(  tgt,
+            tgt = pad(  sample['target'],
                         (0, 1),
                         'constant',
                         value=self.eos_id)
+            tgt_length = tgt.size(0)
             target_lengths.append(tgt.size(0))
             tgt = pad(   tgt,
-                        (0, target_len - tgt_length),
+                        (0, self.max_length - tgt_length),
                         'constant',
                         value=self.pad_id)
             
@@ -123,7 +115,7 @@ class Collator:
         # tgt = torch.stack(targets)
         # inp = torch.stack(inputs)
         return {"targets":  torch.stack(targets),
-                "inputs": torch.stack(inputs),
+                "inputs": torch.stack(inputs).type(torch.int64),
                 "input_lengths": torch.LongTensor(input_lengths),
                 "target_lengths": torch.LongTensor(target_lengths)}
 

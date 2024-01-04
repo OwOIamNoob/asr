@@ -81,13 +81,9 @@ class Decoder(nn.Module):
         self.sos_id = sos_id
         self.eos_id = eos_id
 
-        if not use_embedding:
-            self.embedding = TransformerEmbedding(vocab_size, pad_id, input_dim)
-        else:
-            self.embedding = torch.nn.Identity()
-        
-        self.vocab = None
+        self.embedding = TransformerEmbedding(vocab_size, pad_id, input_dim)
         self.positional_encoding = PositionalEncoding(input_dim)
+        
         self.input_proj = nn.Linear(input_dim, d_model)
         self.input_norm = nn.LayerNorm(d_model)
         self.input_dropout = nn.Dropout(p=dropout_p)
@@ -135,10 +131,6 @@ class Decoder(nn.Module):
         self_attn_mask = torch.gt((dec_self_attn_pad_mask + dec_self_attn_subsequent_mask), 0)
 
         encoder_attn_mask = get_attn_pad_mask(encoder_outputs, encoder_output_lengths, decoder_inputs.size(1))
-
-        if self.vocab:
-            decoder_inputs = self.vocab.embed(decoder_inputs, decoder_inputs.device)
-            
         
         outputs = self.embedding(decoder_inputs) + self.positional_encoding(positional_encoding_length)
         outputs = self.input_proj(outputs)
@@ -205,11 +197,11 @@ class Decoder(nn.Module):
 
         # Inference
         else:
-            input_var = encoder_outputs.new_zeros(batch_size, self.max_length).long()
+            input_var = encoder_outputs.new_zeros(batch_size, self.max_length + 1).long()
             input_var = input_var.fill_(self.pad_id)
             input_var[:, 0] = self.sos_id
 
-            for di in range(1, self.max_length):
+            for di in range(1, self.max_length + 1):
                 input_lengths = torch.IntTensor(batch_size).fill_(di)
 
                 outputs = self.forward_step(

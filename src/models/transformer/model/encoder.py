@@ -8,6 +8,7 @@ from torch import Tensor
 from src.models.transformer.layers.encoder_layer import EncoderLayer
 from src.models.transformer.modules.wrapper import Linear
 from src.models.transformer.modules.positional_encoding import PositionalEncoding
+from src.models.transformer.modules.transformer_embedding import TransformerEmbedding
 from src.models.transformer.modules.mask import get_attn_pad_mask
 
 
@@ -54,13 +55,9 @@ class Encoder(nn.Module):
         self.num_layers = num_layers
         self.num_heads = num_heads
         
-        if not use_embedding:
-            self.embedding = nn.Embedding(vocab_size, pad_id, input_dim)
-        else:
-            self.embedding = nn.Identity()
+        self.embedding = TransformerEmbedding(vocab_size, pad_id, input_dim)
             
         self.vocab = None
-        
         self.input_proj = Linear(input_dim, d_model)
         self.input_norm = nn.LayerNorm(d_model)
         self.input_dropout = nn.Dropout(p=dropout_p)
@@ -99,10 +96,11 @@ class Encoder(nn.Module):
             * output_lengths: The length of encoders outputs. ``(batch)``
         """
         self_attn_mask = get_attn_pad_mask(inputs, input_lengths, inputs.size(1))
-        if self.vocab:
-            inputs = self.vocab.embed(inputs, inputs.device)
         
-        outputs = self.input_norm(self.input_proj(self.embedding(inputs)))
+        inputs = self.embedding(inputs)
+        print(inputs.size())
+        inputs = self.input_proj(inputs)
+        outputs = self.input_norm(inputs)
         outputs += self.positional_encoding(outputs.size(1))
         outputs = self.input_dropout(outputs)
 

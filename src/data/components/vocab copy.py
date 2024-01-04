@@ -8,7 +8,7 @@ import time
 import pythainlp
 from laonlp.corpus import lao_words
 
-
+from tokenizers import 
 
 ############################## utils ###############################
 
@@ -102,7 +102,7 @@ class Vocab:
         self.vocab_size = 0
         self.device = device
         
-        self.export = {0:1000000, 1:1000000, 2:1000000}
+        self.export = {0:10000, 1:10000, 2:10000}
         self.library = dict()
         
         
@@ -136,19 +136,20 @@ class Vocab:
             print(len(self.export))
             self.tokenizer = pythainlp.tokenize.Tokenizer(lao_words() + list(self.vocab.keys()), engine='longest')
         else:
-            # file = open("/work/hpc/potato/laos_vi/data/embedding/pyvi_dict.txt", "r")
-            # for line in file:
-            #     parts = line.strip().split()
-            #     words = ('_'.join(parts), ''.join(parts), ' '.join(parts))
-            #     for word in words:
-            #         if self.vocab.keys().__contains__(word) is True:
-            #             id = self.vocab[word]
-            #             self.idx_to_text[id] = words[0]
-            #             self.vocab[words[0]] = id
-            #             self.export[id] = 1
-            # print(len(self.export))
-            # file.close()
-            self.tokenizer = pythainlp.tokenize.Tokenizer(list(self.vocab.keys()))
+            file = open("/work/hpc/potato/laos_vi/data/embedding/pyvi_dict.txt", "r")
+            for line in file:
+                parts = line.strip().split()
+                words = ('_'.join(parts), ''.join(parts), ' '.join(parts))
+                for word in words:
+                    if self.vocab.keys().__contains__(word) is True:
+                        id = self.vocab[word]
+                        self.idx_to_text[id] = words[0]
+                        self.vocab[words[0]] = id
+                        self.export[id] = 1
+            print(len(self.export))
+            file.close()
+                
+            self.tokenizer = pyvi.ViTokenizer.ViTokenizer()
         
         # self.idx_to_text = dict(zip(self.vocab.values(), self.vocab.keys()))
         
@@ -333,9 +334,10 @@ class Vocab:
         return [self.idx_to_text[id] for id in ids]
     
     def get_topk(self, top_k: int):
-        ids = sorted(list(self.export.items()), key= lambda a: a[1], reverse=True)
-        words = [self.idx_to_text[id] for id, freq in ids]
-        return np.array(ids), words
+        ids = sorted(list(self.export.items()), key= lambda a: a[1])
+        output_index = sorted(ids[:top_k], key= lambda a: a[0])
+        words = [self.idx_to_text[id] for id, freq in output_index]
+        return np.array(output_index[:][0]), words
 def load_dict(path):
     file = open(path, "r")
     header = file.readline()
