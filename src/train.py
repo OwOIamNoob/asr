@@ -70,7 +70,6 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
 
     log.info(f"Instantiating trainer <{cfg.trainer._target_}>")
     trainer: Trainer = hydra.utils.instantiate(cfg.trainer, callbacks=callbacks, logger=logger)
-    datamodule.target_vocab.to(model.device)
     
     model.load_vocab(datamodule.input_vocab, datamodule.target_vocab)
     object_dict = {
